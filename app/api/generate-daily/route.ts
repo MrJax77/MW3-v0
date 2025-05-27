@@ -4,7 +4,8 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { type NextRequest, NextResponse } from "next/server"
 
-export const runtime = "edge"
+// Remove the edge runtime - this was causing the 500 error
+// export const runtime = "edge"
 
 export async function POST(request: NextRequest) {
   try {
