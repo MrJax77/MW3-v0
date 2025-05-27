@@ -8,15 +8,11 @@ export async function GET(request: NextRequest) {
   const error = requestUrl.searchParams.get("error")
   const errorDescription = requestUrl.searchParams.get("error_description")
 
+  console.log("Auth callback received:", { code: !!code, error, errorDescription })
+
   if (error) {
     console.error("Auth error:", error, errorDescription)
-
-    // Handle specific error cases
-    if (error === "access_denied" && errorDescription?.includes("expired")) {
-      return NextResponse.redirect(new URL("/login?error=expired", request.url))
-    }
-
-    return NextResponse.redirect(new URL("/login?error=auth_failed", request.url))
+    return NextResponse.redirect(new URL(`/login?error=${error}`, request.url))
   }
 
   if (code) {
@@ -24,14 +20,29 @@ export async function GET(request: NextRequest) {
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
 
     try {
-      await supabase.auth.exchangeCodeForSession(code)
-      return NextResponse.redirect(new URL("/intake", request.url))
+      console.log("Attempting to exchange code for session...")
+
+      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+
+      if (exchangeError) {
+        console.error("Code exchange error:", exchangeError)
+        return NextResponse.redirect(new URL("/login?error=session_failed", request.url))
+      }
+
+      if (data.user) {
+        console.log("User authenticated successfully:", data.user.email)
+        return NextResponse.redirect(new URL("/intake", request.url))
+      } else {
+        console.error("No user data after successful exchange")
+        return NextResponse.redirect(new URL("/login?error=no_user", request.url))
+      }
     } catch (error) {
-      console.error("Error exchanging code for session:", error)
-      return NextResponse.redirect(new URL("/login?error=session_failed", request.url))
+      console.error("Unexpected error in auth callback:", error)
+      return NextResponse.redirect(new URL("/login?error=unexpected", request.url))
     }
   }
 
   // No code or error, redirect to login
-  return NextResponse.redirect(new URL("/login", request.url))
+  console.log("No code or error found, redirecting to login")
+  return NextResponse.redirect(new URL("/login?error=no_code", request.url))
 }

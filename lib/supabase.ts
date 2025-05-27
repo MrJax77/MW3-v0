@@ -18,9 +18,8 @@ export async function signOut() {
 }
 
 export async function signInWithMagicLink(email: string) {
-  // Get the current origin, use the actual domain for redirects
-  const origin = typeof window !== "undefined" ? window.location.origin : ""
-  const redirectTo = `${origin}/auth/callback`
+  // Use the exact Vercel domain for redirects
+  const redirectTo = "https://mw3-v0.vercel.app/auth/callback"
 
   const { error } = await supabase.auth.signInWithOtp({
     email,

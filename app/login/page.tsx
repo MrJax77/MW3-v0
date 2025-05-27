@@ -7,9 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { signInWithMagicLink } from "@/lib/supabase"
-import { Mail, Loader2, AlertCircle, RefreshCw } from "lucide-react"
+import { Mail, Loader2, RefreshCw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
@@ -28,13 +27,26 @@ export default function LoginPage() {
 
       switch (error) {
         case "expired":
+        case "otp_expired":
           errorMessage = "The magic link has expired. Please request a new one."
+          break
+        case "access_denied":
+          errorMessage = "Access was denied. The link may be invalid or expired."
           break
         case "auth_failed":
           errorMessage = "Authentication failed. Please try again."
           break
         case "session_failed":
           errorMessage = "Failed to create session. Please try again."
+          break
+        case "no_user":
+          errorMessage = "No user found after authentication. Please try again."
+          break
+        case "unexpected":
+          errorMessage = "An unexpected error occurred. Please try again."
+          break
+        case "no_code":
+          errorMessage = "Invalid authentication link. Please request a new one."
           break
       }
 
@@ -43,6 +55,11 @@ export default function LoginPage() {
         description: errorMessage,
         variant: "destructive",
       })
+
+      // Clear the error from URL after showing it
+      const newUrl = new URL(window.location.href)
+      newUrl.searchParams.delete("error")
+      window.history.replaceState({}, "", newUrl.toString())
     }
   }, [error, toast])
 
@@ -56,7 +73,7 @@ export default function LoginPage() {
       setIsEmailSent(true)
       toast({
         title: "Magic link sent!",
-        description: "Check your email for a secure login link.",
+        description: "Check your email for a secure login link. The link will expire in 1 hour.",
       })
     } catch (error) {
       console.error("Magic link error:", error)
@@ -83,19 +100,6 @@ export default function LoginPage() {
           <CardDescription>Enter your email to receive a secure login link</CardDescription>
         </CardHeader>
         <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {error === "expired" && "The magic link has expired. Please request a new one."}
-                {error === "auth_failed" && "Authentication failed. Please try again."}
-                {error === "session_failed" && "Failed to create session. Please try again."}
-                {!["expired", "auth_failed", "session_failed"].includes(error) &&
-                  "An error occurred during authentication."}
-              </AlertDescription>
-            </Alert>
-          )}
-
           {!isEmailSent ? (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -133,7 +137,7 @@ export default function LoginPage() {
                 </p>
               </div>
               <p className="text-sm text-muted-foreground">
-                Click the link in your email to continue to your intake form.
+                Click the link in your email to continue. The link expires in 1 hour.
               </p>
               <div className="space-y-2">
                 <Button variant="outline" onClick={handleResendEmail} className="w-full">
