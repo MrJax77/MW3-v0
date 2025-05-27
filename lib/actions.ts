@@ -2,9 +2,14 @@
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { validateIntakeData, sanitizeIntakeData } from "./validation-utils"
+import { logError, logDebug, validateServerEnvironment } from "./debug-utils"
 
 export async function getProfile() {
   try {
+    logDebug("getProfile", "Starting profile fetch")
+
+    validateServerEnvironment()
+
     const cookieStore = cookies()
     const supabaseServer = createServerComponentClient({ cookies: () => cookieStore })
 
@@ -13,191 +18,252 @@ export async function getProfile() {
     } = await supabaseServer.auth.getUser()
 
     if (!user) {
+      logError("getProfile", new Error("User not authenticated"))
       throw new Error("User not authenticated")
     }
+
+    logDebug("getProfile", `Fetching profile for user: ${user.id}`)
 
     const { data: profile, error } = await supabaseServer.from("profiles").select("*").eq("user_id", user.id).single()
 
     if (error && error.code !== "PGRST116") {
-      console.error("Profile fetch error:", error)
+      logError("getProfile", error, { userId: user.id })
       throw new Error("Failed to fetch profile")
     }
 
+    logDebug("getProfile", `Profile fetched successfully: ${profile ? "found" : "not found"}`)
     return profile
   } catch (error) {
-    console.error("getProfile error:", error)
+    logError("getProfile", error)
     throw error
   }
 }
 
 export async function saveIntakeModule(moduleData: any) {
   try {
-    console.log("Starting saveIntakeModule with data:", moduleData)
+    logDebug("saveIntakeModule", "Starting save operation")
+    logDebug("saveIntakeModule", { inputData: moduleData })
+
+    // Validate environment first
+    validateServerEnvironment()
 
     const cookieStore = cookies()
     const supabaseServer = createServerComponentClient({ cookies: () => cookieStore })
 
-    const {
-      data: { user },
-    } = await supabaseServer.auth.getUser()
+    // Get user with detailed error handling
+    let user
+    try {
+      const { data: userData, error: userError } = await supabaseServer.auth.getUser()
 
-    if (!user) {
-      console.error("No authenticated user found")
-      throw new Error("User not authenticated")
+      if (userError) {
+        logError("saveIntakeModule", userError, { step: "auth.getUser" })
+        throw new Error(`Authentication failed: ${userError.message}`)
+      }
+
+      if (!userData?.user) {
+        logError("saveIntakeModule", new Error("No user data returned"))
+        throw new Error("User not authenticated")
+      }
+
+      user = userData.user
+      logDebug("saveIntakeModule", `Authenticated user: ${user.id}`)
+    } catch (authError) {
+      logError("saveIntakeModule", authError, { step: "authentication" })
+      throw new Error("Authentication failed")
     }
 
-    console.log("Authenticated user:", user.id)
+    // Sanitize and validate data
+    let sanitizedData
+    try {
+      sanitizedData = sanitizeIntakeData(moduleData)
+      logDebug("saveIntakeModule", { sanitizedData })
 
-    // Sanitize the input data
-    const sanitizedData = sanitizeIntakeData(moduleData)
-
-    // Validate the data
-    const validation = validateIntakeData(sanitizedData, sanitizedData.completed_stages || 0)
-    if (!validation.isValid) {
-      console.error("Validation errors:", validation.errors)
-      throw new Error(`Validation failed: ${validation.errors.join(", ")}`)
+      const validation = validateIntakeData(sanitizedData, sanitizedData.completed_stages || 0)
+      if (!validation.isValid) {
+        logError("saveIntakeModule", new Error("Validation failed"), { errors: validation.errors })
+        throw new Error(`Validation failed: ${validation.errors.join(", ")}`)
+      }
+    } catch (validationError) {
+      logError("saveIntakeModule", validationError, { step: "validation" })
+      throw validationError
     }
 
-    // Use sanitizedData instead of moduleData for the rest of the function
+    // Prepare database data with explicit type conversion
     const dbData = {
       user_id: user.id,
-      // Stage 0: Consent
-      consent_agreed: sanitizedData.consent_agreed === true,
 
-      // Stage 1: Basic Info
-      first_name: sanitizedData.first_name ? String(sanitizedData.first_name).trim() : null,
-      age: sanitizedData.age ? Number(sanitizedData.age) : null,
-      role: sanitizedData.role ? String(sanitizedData.role).trim() : null,
-      spouse_name: sanitizedData.spouse_name ? String(sanitizedData.spouse_name).trim() : null,
-      children_count: sanitizedData.children_count ? Number(sanitizedData.children_count) : 0,
-      children_ages: sanitizedData.children_ages ? String(sanitizedData.children_ages).trim() : null,
+      // Stage 0: Consent - ensure boolean
+      consent_agreed: Boolean(sanitizedData.consent_agreed),
 
-      // Stage 2: Relationships
+      // Stage 1: Basic Info - ensure proper types
+      first_name: sanitizedData.first_name ? String(sanitizedData.first_name).trim().substring(0, 100) : null,
+      age: sanitizedData.age ? Math.max(0, Math.min(120, Number(sanitizedData.age))) : null,
+      role: sanitizedData.role ? String(sanitizedData.role).trim().substring(0, 50) : null,
+      spouse_name: sanitizedData.spouse_name ? String(sanitizedData.spouse_name).trim().substring(0, 100) : null,
+      children_count: sanitizedData.children_count
+        ? Math.max(0, Math.min(20, Number(sanitizedData.children_count)))
+        : 0,
+      children_ages: sanitizedData.children_ages ? String(sanitizedData.children_ages).trim().substring(0, 200) : null,
+
+      // Stage 2: Relationships - ensure number ranges
       spouse_relationship_rating:
         sanitizedData.spouse_relationship_rating !== undefined
-          ? Number(sanitizedData.spouse_relationship_rating)
+          ? Math.max(0, Math.min(10, Number(sanitizedData.spouse_relationship_rating)))
           : null,
       spouse_relationship_reason: sanitizedData.spouse_relationship_reason
-        ? String(sanitizedData.spouse_relationship_reason).trim()
+        ? String(sanitizedData.spouse_relationship_reason).trim().substring(0, 1000)
         : null,
       children_relationship_rating:
         sanitizedData.children_relationship_rating !== undefined
-          ? Number(sanitizedData.children_relationship_rating)
+          ? Math.max(0, Math.min(10, Number(sanitizedData.children_relationship_rating)))
           : null,
       children_relationship_reason: sanitizedData.children_relationship_reason
-        ? String(sanitizedData.children_relationship_reason).trim()
+        ? String(sanitizedData.children_relationship_reason).trim().substring(0, 1000)
         : null,
       spouse_relationship_goal: sanitizedData.spouse_relationship_goal
-        ? String(sanitizedData.spouse_relationship_goal).trim()
+        ? String(sanitizedData.spouse_relationship_goal).trim().substring(0, 500)
         : null,
-      parenting_goal: sanitizedData.parenting_goal ? String(sanitizedData.parenting_goal).trim() : null,
+      parenting_goal: sanitizedData.parenting_goal
+        ? String(sanitizedData.parenting_goal).trim().substring(0, 500)
+        : null,
       upcoming_events: Array.isArray(sanitizedData.upcoming_events) ? sanitizedData.upcoming_events : [],
 
       // Stage 3: Health & Wellness
       current_health_rating:
-        sanitizedData.current_health_rating !== undefined ? Number(sanitizedData.current_health_rating) : null,
+        sanitizedData.current_health_rating !== undefined
+          ? Math.max(0, Math.min(10, Number(sanitizedData.current_health_rating)))
+          : null,
       health_rating_reason: sanitizedData.health_rating_reason
-        ? String(sanitizedData.health_rating_reason).trim()
+        ? String(sanitizedData.health_rating_reason).trim().substring(0, 1000)
         : null,
-      health_goal: sanitizedData.health_goal ? String(sanitizedData.health_goal).trim() : null,
+      health_goal: sanitizedData.health_goal ? String(sanitizedData.health_goal).trim().substring(0, 500) : null,
       exercise_frequency:
-        sanitizedData.exercise_frequency !== undefined ? Number(sanitizedData.exercise_frequency) : null,
-      sleep_hours: sanitizedData.sleep_hours !== undefined ? Number(sanitizedData.sleep_hours) : null,
+        sanitizedData.exercise_frequency !== undefined
+          ? Math.max(0, Math.min(7, Number(sanitizedData.exercise_frequency)))
+          : null,
+      sleep_hours:
+        sanitizedData.sleep_hours !== undefined ? Math.max(0, Math.min(24, Number(sanitizedData.sleep_hours))) : null,
 
       // Stage 4: Mindset & Stress
       current_stress_level:
-        sanitizedData.current_stress_level !== undefined ? Number(sanitizedData.current_stress_level) : null,
+        sanitizedData.current_stress_level !== undefined
+          ? Math.max(0, Math.min(10, Number(sanitizedData.current_stress_level)))
+          : null,
       stress_rating_reason: sanitizedData.stress_rating_reason
-        ? String(sanitizedData.stress_rating_reason).trim()
+        ? String(sanitizedData.stress_rating_reason).trim().substring(0, 1000)
         : null,
-      personal_goal: sanitizedData.personal_goal ? String(sanitizedData.personal_goal).trim() : null,
+      personal_goal: sanitizedData.personal_goal ? String(sanitizedData.personal_goal).trim().substring(0, 500) : null,
       mindfulness_practices: Array.isArray(sanitizedData.mindfulness_practices)
         ? sanitizedData.mindfulness_practices
         : [],
 
       // Stage 5: Daily Routine
-      routine_description: sanitizedData.routine_description ? String(sanitizedData.routine_description).trim() : null,
+      routine_description: sanitizedData.routine_description
+        ? String(sanitizedData.routine_description).trim().substring(0, 2000)
+        : null,
 
       // Stage 6: Future Goals
-      family_future_goal: sanitizedData.family_future_goal ? String(sanitizedData.family_future_goal).trim() : null,
+      family_future_goal: sanitizedData.family_future_goal
+        ? String(sanitizedData.family_future_goal).trim().substring(0, 1000)
+        : null,
 
       // Stage 7: Family Values
-      family_value: sanitizedData.family_value ? String(sanitizedData.family_value).trim() : null,
+      family_value: sanitizedData.family_value ? String(sanitizedData.family_value).trim().substring(0, 1000) : null,
 
       // Stage 8: Technology
       wearable_usage: Array.isArray(sanitizedData.wearable_usage) ? sanitizedData.wearable_usage : [],
-      google_calendar_sync: sanitizedData.google_calendar_sync === true,
-      apple_health_sync: sanitizedData.apple_health_sync === true,
+      google_calendar_sync: Boolean(sanitizedData.google_calendar_sync),
+      apple_health_sync: Boolean(sanitizedData.apple_health_sync),
 
       // Stage 9: Preferences
-      notification_channel: sanitizedData.notification_channel ? String(sanitizedData.notification_channel) : "email",
-      quiet_hours_start: sanitizedData.quiet_hours_start ? String(sanitizedData.quiet_hours_start) : "22:00",
-      quiet_hours_end: sanitizedData.quiet_hours_end ? String(sanitizedData.quiet_hours_end) : "07:00",
-      data_deletion_acknowledged: sanitizedData.data_deletion_acknowledged === true,
+      notification_channel: sanitizedData.notification_channel
+        ? String(sanitizedData.notification_channel).substring(0, 20)
+        : "email",
+      quiet_hours_start: sanitizedData.quiet_hours_start
+        ? String(sanitizedData.quiet_hours_start).substring(0, 10)
+        : "22:00",
+      quiet_hours_end: sanitizedData.quiet_hours_end ? String(sanitizedData.quiet_hours_end).substring(0, 10) : "07:00",
+      data_deletion_acknowledged: Boolean(sanitizedData.data_deletion_acknowledged),
 
       // Meta fields
       completed_stages: sanitizedData.completed_stages ? Number(sanitizedData.completed_stages) : 0,
-      is_complete: sanitizedData.is_complete === true,
+      is_complete: Boolean(sanitizedData.is_complete),
       last_saved: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
 
-    console.log("Prepared database data:", dbData)
+    logDebug("saveIntakeModule", { preparedDbData: dbData })
 
-    // Remove undefined values to avoid database errors
+    // Remove any undefined values
     Object.keys(dbData).forEach((key) => {
       if (dbData[key as keyof typeof dbData] === undefined) {
         delete dbData[key as keyof typeof dbData]
       }
     })
 
-    console.log("Final database data after cleanup:", dbData)
+    logDebug("saveIntakeModule", "Attempting database upsert")
 
-    const { data, error } = await supabaseServer
-      .from("profiles")
-      .upsert(dbData, {
-        onConflict: "user_id",
-      })
-      .select()
-      .single()
+    // Perform database operation with detailed error handling
+    let result
+    try {
+      const { data, error } = await supabaseServer
+        .from("profiles")
+        .upsert(dbData, {
+          onConflict: "user_id",
+        })
+        .select()
+        .single()
 
-    if (error) {
-      console.error("Database upsert error:", error)
-      console.error("Error details:", {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-      })
+      if (error) {
+        logError("saveIntakeModule", error, {
+          step: "database_upsert",
+          dbData,
+          errorCode: error.code,
+          errorDetails: error.details,
+          errorHint: error.hint,
+        })
 
-      // Provide more specific error messages
-      if (error.code === "23505") {
-        throw new Error("A profile with this information already exists")
-      } else if (error.code === "23502") {
-        throw new Error("Required field is missing")
-      } else if (error.code === "22001") {
-        throw new Error("One of the text fields is too long")
-      } else {
-        throw new Error(`Database error: ${error.message}`)
+        // Provide specific error messages based on error codes
+        if (error.code === "23505") {
+          throw new Error("Duplicate entry detected")
+        } else if (error.code === "23502") {
+          throw new Error(`Required field missing: ${error.details || "unknown field"}`)
+        } else if (error.code === "22001") {
+          throw new Error("Text field too long")
+        } else if (error.code === "42703") {
+          throw new Error("Database column does not exist")
+        } else {
+          throw new Error(`Database error (${error.code}): ${error.message}`)
+        }
       }
+
+      result = data
+      logDebug("saveIntakeModule", { savedData: result })
+    } catch (dbError) {
+      logError("saveIntakeModule", dbError, { step: "database_operation" })
+      throw dbError
     }
 
-    console.log("Successfully saved intake module:", data)
-    return data
+    logDebug("saveIntakeModule", "Save operation completed successfully")
+    return result
   } catch (error) {
-    console.error("saveIntakeModule error:", error)
+    logError("saveIntakeModule", error, { step: "overall_operation" })
 
-    // Re-throw with more context
+    // Re-throw with more context for client
     if (error instanceof Error) {
-      throw new Error(`Failed to save intake data: ${error.message}`)
+      throw new Error(`Save failed: ${error.message}`)
     } else {
-      throw new Error("Failed to save intake data: Unknown error occurred")
+      throw new Error("Save failed: Unknown error occurred")
     }
   }
 }
 
 export async function getIntakeProgress() {
   try {
+    logDebug("getIntakeProgress", "Starting progress fetch")
+
+    validateServerEnvironment()
+
     const cookieStore = cookies()
     const supabaseServer = createServerComponentClient({ cookies: () => cookieStore })
 
@@ -206,6 +272,7 @@ export async function getIntakeProgress() {
     } = await supabaseServer.auth.getUser()
 
     if (!user) {
+      logError("getIntakeProgress", new Error("User not authenticated"))
       throw new Error("User not authenticated")
     }
 
@@ -216,13 +283,14 @@ export async function getIntakeProgress() {
       .single()
 
     if (error && error.code !== "PGRST116") {
-      console.error("Progress fetch error:", error)
+      logError("getIntakeProgress", error, { userId: user.id })
       return { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
     }
 
+    logDebug("getIntakeProgress", { progress: profile })
     return profile || { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
   } catch (error) {
-    console.error("getIntakeProgress error:", error)
+    logError("getIntakeProgress", error)
     return { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
   }
 }
@@ -296,13 +364,15 @@ export async function calculateProfileCompleteness() {
       isComplete: profile.is_complete || false,
     }
   } catch (error) {
-    console.error("calculateProfileCompleteness error:", error)
+    logError("calculateProfileCompleteness", error)
     return { percentage: 0, completedStages: [], missingStages: [], totalStages: 10, isComplete: false }
   }
 }
 
 export async function getLatestInsight() {
   try {
+    validateServerEnvironment()
+
     const cookieStore = cookies()
     const supabaseServer = createServerComponentClient({ cookies: () => cookieStore })
 
@@ -323,19 +393,21 @@ export async function getLatestInsight() {
       .single()
 
     if (error && error.code !== "PGRST116") {
-      console.error("Insight fetch error:", error)
+      logError("getLatestInsight", error, { userId: user.id })
       return null
     }
 
     return insight
   } catch (error) {
-    console.error("getLatestInsight error:", error)
+    logError("getLatestInsight", error)
     return null
   }
 }
 
 export async function saveDailyLog(logData: any) {
   try {
+    validateServerEnvironment()
+
     const cookieStore = cookies()
     const supabaseServer = createServerComponentClient({ cookies: () => cookieStore })
 
@@ -361,19 +433,21 @@ export async function saveDailyLog(logData: any) {
     })
 
     if (error) {
-      console.error("Daily log save error:", error)
+      logError("saveDailyLog", error, { logData })
       throw new Error(`Failed to save daily log: ${error.message}`)
     }
 
     return data
   } catch (error) {
-    console.error("saveDailyLog error:", error)
+    logError("saveDailyLog", error)
     throw error
   }
 }
 
 export async function resetIntakeProgress() {
   try {
+    validateServerEnvironment()
+
     const cookieStore = cookies()
     const supabaseServer = createServerComponentClient({ cookies: () => cookieStore })
 
@@ -430,13 +504,13 @@ export async function resetIntakeProgress() {
       .eq("user_id", user.id)
 
     if (error) {
-      console.error("Reset intake error:", error)
+      logError("resetIntakeProgress", error)
       throw new Error(`Failed to reset intake progress: ${error.message}`)
     }
 
     return data
   } catch (error) {
-    console.error("resetIntakeProgress error:", error)
+    logError("resetIntakeProgress", error)
     throw error
   }
 }
@@ -484,13 +558,15 @@ export async function validateProfileData() {
 
     return { isValid: errors.length === 0, errors }
   } catch (error) {
-    console.error("validateProfileData error:", error)
+    logError("validateProfileData", error)
     return { isValid: false, errors: ["Validation failed"] }
   }
 }
 
 export async function getProfileForIntake() {
   try {
+    validateServerEnvironment()
+
     const cookieStore = cookies()
     const supabaseServer = createServerComponentClient({ cookies: () => cookieStore })
 
@@ -505,13 +581,13 @@ export async function getProfileForIntake() {
     const { data: profile, error } = await supabaseServer.from("profiles").select("*").eq("user_id", user.id).single()
 
     if (error && error.code !== "PGRST116") {
-      console.error("Profile fetch error:", error)
+      logError("getProfileForIntake", error, { userId: user.id })
       return null
     }
 
     return profile
   } catch (error) {
-    console.error("getProfileForIntake error:", error)
+    logError("getProfileForIntake", error)
     return null
   }
 }

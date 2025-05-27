@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useIntakeStore } from "@/lib/intake-store"
 import { getUser } from "@/lib/supabase"
 import { getProfile } from "@/lib/actions"
+import { ErrorBoundary } from "@/components/error-boundary"
 import { StageProgress } from "@/components/intake/stage-progress"
 import { WelcomeScreen } from "@/components/intake/welcome-screen"
 import { MidpointModal } from "@/components/intake/midpoint-modal"
@@ -19,13 +20,13 @@ import { FutureGoalsForm } from "@/components/intake/module-forms/future-goals-f
 import { ValuesForm } from "@/components/intake/module-forms/values-form"
 import { TechnologyForm } from "@/components/intake/module-forms/technology-form"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Loader2, Save, Clock } from "lucide-react"
+import { ArrowLeft, Loader2, Save, Clock, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { saveIntakeModule } from "@/lib/actions"
 
 const AUTOSAVE_INTERVAL = 30000 // 30 seconds
 
-export default function IntakePage() {
+function IntakePageContent() {
   const router = useRouter()
   const { toast } = useToast()
   const {
@@ -48,26 +49,32 @@ export default function IntakePage() {
   const [isInitializing, setIsInitializing] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [showMidpointModal, setShowMidpointModal] = useState(false)
-  const [retryCount, setRetryCount] = useState(0)
-  const MAX_RETRIES = 3
+  const [lastError, setLastError] = useState<string | null>(null)
 
   // Initialize user and load existing profile data
   useEffect(() => {
     const initUser = async () => {
       try {
+        console.log("🔄 Initializing user...")
+
         const user = await getUser()
         if (!user) {
+          console.log("❌ No user found, redirecting to login")
           router.push("/login")
           return
         }
+
+        console.log("✅ User authenticated:", user.id)
         setUserId(user.id)
 
         // Load existing profile data if not already initialized
         if (!isInitialized) {
           try {
+            console.log("🔄 Loading existing profile...")
             const existingProfile = await getProfile()
+
             if (existingProfile) {
-              console.log("Loading existing profile data:", existingProfile)
+              console.log("✅ Profile loaded:", existingProfile)
               initializeFromProfile(existingProfile)
 
               // Show success message if resuming
@@ -78,17 +85,19 @@ export default function IntakePage() {
                 })
               }
             } else {
-              // No existing profile, start fresh
+              console.log("ℹ️ No existing profile, starting fresh")
               setInitialized(true)
             }
           } catch (error) {
-            console.error("Error loading profile:", error)
+            console.error("❌ Error loading profile:", error)
+            setLastError(`Profile load failed: ${error instanceof Error ? error.message : "Unknown error"}`)
             // Continue with fresh start if profile load fails
             setInitialized(true)
           }
         }
       } catch (error) {
-        console.error("Error initializing user:", error)
+        console.error("❌ Error initializing user:", error)
+        setLastError(`Initialization failed: ${error instanceof Error ? error.message : "Unknown error"}`)
         router.push("/login")
       } finally {
         setIsInitializing(false)
@@ -104,13 +113,17 @@ export default function IntakePage() {
 
     setIsSaving(true)
     try {
+      console.log("🔄 Auto-saving...")
       await saveIntakeModule({
         ...data,
         completed_stages: currentStage,
       })
+      console.log("✅ Auto-save successful")
       updateLastAutoSave()
+      setLastError(null) // Clear any previous errors
     } catch (error) {
-      console.error("Auto-save failed:", error)
+      console.error("❌ Auto-save failed:", error)
+      setLastError(`Auto-save failed: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
       setIsSaving(false)
     }
@@ -124,9 +137,11 @@ export default function IntakePage() {
 
   const saveToSupabase = async (stageData: any, isComplete = false) => {
     if (!userId) {
+      const errorMsg = "Your session has expired. Please log in again."
+      setLastError(errorMsg)
       toast({
         title: "Authentication Error",
-        description: "Your session has expired. Please log in again.",
+        description: errorMsg,
         variant: "destructive",
       })
       router.push("/login")
@@ -134,8 +149,10 @@ export default function IntakePage() {
     }
 
     setIsLoading(true)
+    setLastError(null)
+
     try {
-      console.log("Saving stage data:", { currentStage, stageData, isComplete })
+      console.log("🔄 Saving stage data:", { currentStage, stageData, isComplete })
 
       const saveData = {
         ...data,
@@ -144,10 +161,10 @@ export default function IntakePage() {
         is_complete: isComplete,
       }
 
-      console.log("Complete save data:", saveData)
+      console.log("🔄 Complete save data:", saveData)
 
       const result = await saveIntakeModule(saveData)
-      console.log("Save result:", result)
+      console.log("✅ Save successful:", result)
 
       if (!isComplete) {
         toast({
@@ -157,19 +174,23 @@ export default function IntakePage() {
       }
       return true
     } catch (error) {
-      console.error("Error saving stage:", error)
+      console.error("❌ Save error:", error)
 
       let errorMessage = "Failed to save your progress. Please try again."
       let errorTitle = "Save Error"
 
       if (error instanceof Error) {
         const errorMsg = error.message.toLowerCase()
+        setLastError(error.message)
 
         if (errorMsg.includes("not authenticated") || errorMsg.includes("session")) {
           errorTitle = "Session Expired"
           errorMessage = "Your session has expired. Please log in again."
           router.push("/login")
           return false
+        } else if (errorMsg.includes("validation failed")) {
+          errorTitle = "Validation Error"
+          errorMessage = "Please check your input and try again."
         } else if (errorMsg.includes("required field")) {
           errorTitle = "Missing Information"
           errorMessage = "Please fill in all required fields before continuing."
@@ -195,48 +216,26 @@ export default function IntakePage() {
     }
   }
 
-  const saveWithRetry = async (stageData: any, isComplete = false, attempt = 1) => {
-    try {
-      return await saveToSupabase(stageData, isComplete)
-    } catch (error) {
-      if (attempt < MAX_RETRIES) {
-        console.log(`Save attempt ${attempt} failed, retrying...`)
-        await new Promise((resolve) => setTimeout(resolve, 1000 * attempt)) // Exponential backoff
-        return saveWithRetry(stageData, isComplete, attempt + 1)
-      } else {
-        throw error
-      }
-    }
-  }
-
   const handleStageSubmit = async (stageData: any) => {
+    console.log("🔄 Handling stage submit:", { currentStage, stageData })
+
     // Update local store
     updateData(stageData)
 
     // Save to database
-    try {
-      const saveSuccess = await saveWithRetry(stageData, currentStage === 9)
+    const saveSuccess = await saveToSupabase(stageData, currentStage === 9)
 
-      if (!saveSuccess) return
+    if (!saveSuccess) return
 
-      // Handle stage progression
-      if (currentStage === 4 && !hasShownMidpointModal) {
-        setShowMidpointModal(true)
-        setMidpointModalShown(true)
-      } else if (currentStage === 9) {
-        // Final stage - mark as complete
-        setStage(10)
-      } else {
-        setStage(currentStage + 1)
-      }
-    } catch (error) {
-      console.error("Final save failed after multiple retries:", error)
-      toast({
-        title: "Critical Error",
-        description:
-          "Failed to save your progress after multiple attempts. Please check your connection and try again later.",
-        variant: "destructive",
-      })
+    // Handle stage progression
+    if (currentStage === 4 && !hasShownMidpointModal) {
+      setShowMidpointModal(true)
+      setMidpointModalShown(true)
+    } else if (currentStage === 9) {
+      // Final stage - mark as complete
+      setStage(10)
+    } else {
+      setStage(currentStage + 1)
     }
   }
 
@@ -343,6 +342,20 @@ export default function IntakePage() {
         {/* Progress Bar */}
         {showNavigation && <StageProgress currentStage={currentStage} totalStages={10} />}
 
+        {/* Error Display */}
+        {lastError && (
+          <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-destructive">Last Error:</p>
+              <p className="text-xs text-destructive/80">{lastError}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setLastError(null)}>
+              Dismiss
+            </Button>
+          </div>
+        )}
+
         {/* Loading State */}
         {isLoading && (
           <div className="flex items-center justify-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
@@ -377,5 +390,13 @@ export default function IntakePage() {
         />
       </div>
     </div>
+  )
+}
+
+export default function IntakePage() {
+  return (
+    <ErrorBoundary>
+      <IntakePageContent />
+    </ErrorBoundary>
   )
 }
