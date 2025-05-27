@@ -68,3 +68,40 @@ export const schemas = [
   technologySchema,
   valuesSchema,
 ]
+
+// Legacy schemas for backward compatibility
+export const identitySchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  age: z.number().min(0).max(120),
+  gender: z.string().min(1, "Please select your gender"),
+  location: z.string().min(1, "Location is required"),
+})
+
+export const householdSchema = z.object({
+  maritalStatus: z.string().min(1, "Please select your marital status"),
+  children: z.number().min(0).max(20),
+  householdSize: z.number().min(1).max(50),
+  livingArrangement: z.string().min(1, "Please select your living arrangement"),
+})
+
+export const wellnessSchema = z.object({
+  fitnessLevel: z.string().min(1, "Please select your fitness level"),
+  healthGoals: z.array(z.string()).min(1, "Please select at least one health goal"),
+  sleepHours: z.number().min(4).max(12),
+  dietaryRestrictions: z.array(z.string()),
+})
+
+export const mindsetSchema = z.object({
+  personalityType: z.string().min(1, "Please select your personality type"),
+  stressLevel: z.number().min(1).max(10),
+  motivationStyle: z.string().min(1, "Please select your motivation style"),
+  learningStyle: z.string().min(1, "Please select your learning style"),
+})
+
+export const purposeSchema = z.object({
+  lifeGoals: z.array(z.string()).min(1, "Please select at least one life goal"),
+  values: z.array(z.string()).min(1, "Please select at least one core value"),
+  passions: z.string().min(1, "Please describe your passions"),
+  legacy: z.string().min(1, "Please describe your desired legacy"),
+})
