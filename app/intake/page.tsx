@@ -48,6 +48,8 @@ export default function IntakePage() {
   const [isInitializing, setIsInitializing] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [showMidpointModal, setShowMidpointModal] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
+  const MAX_RETRIES = 3
 
   // Initialize user and load existing profile data
   useEffect(() => {
@@ -123,8 +125,8 @@ export default function IntakePage() {
   const saveToSupabase = async (stageData: any, isComplete = false) => {
     if (!userId) {
       toast({
-        title: "Error",
-        description: "User not authenticated. Please log in again.",
+        title: "Authentication Error",
+        description: "Your session has expired. Please log in again.",
         variant: "destructive",
       })
       router.push("/login")
@@ -133,6 +135,8 @@ export default function IntakePage() {
 
     setIsLoading(true)
     try {
+      console.log("Saving stage data:", { currentStage, stageData, isComplete })
+
       const saveData = {
         ...data,
         ...stageData,
@@ -140,7 +144,10 @@ export default function IntakePage() {
         is_complete: isComplete,
       }
 
-      await saveIntakeModule(saveData)
+      console.log("Complete save data:", saveData)
+
+      const result = await saveIntakeModule(saveData)
+      console.log("Save result:", result)
 
       if (!isComplete) {
         toast({
@@ -153,16 +160,32 @@ export default function IntakePage() {
       console.error("Error saving stage:", error)
 
       let errorMessage = "Failed to save your progress. Please try again."
+      let errorTitle = "Save Error"
+
       if (error instanceof Error) {
-        if (error.message.includes("not authenticated")) {
-          errorMessage = "Session expired. Please log in again."
+        const errorMsg = error.message.toLowerCase()
+
+        if (errorMsg.includes("not authenticated") || errorMsg.includes("session")) {
+          errorTitle = "Session Expired"
+          errorMessage = "Your session has expired. Please log in again."
           router.push("/login")
           return false
+        } else if (errorMsg.includes("required field")) {
+          errorTitle = "Missing Information"
+          errorMessage = "Please fill in all required fields before continuing."
+        } else if (errorMsg.includes("too long")) {
+          errorTitle = "Text Too Long"
+          errorMessage = "One of your responses is too long. Please shorten it and try again."
+        } else if (errorMsg.includes("network") || errorMsg.includes("connection")) {
+          errorTitle = "Connection Error"
+          errorMessage = "Please check your internet connection and try again."
+        } else {
+          errorMessage = `Save failed: ${error.message}`
         }
       }
 
       toast({
-        title: "Error",
+        title: errorTitle,
         description: errorMessage,
         variant: "destructive",
       })
@@ -172,24 +195,48 @@ export default function IntakePage() {
     }
   }
 
+  const saveWithRetry = async (stageData: any, isComplete = false, attempt = 1) => {
+    try {
+      return await saveToSupabase(stageData, isComplete)
+    } catch (error) {
+      if (attempt < MAX_RETRIES) {
+        console.log(`Save attempt ${attempt} failed, retrying...`)
+        await new Promise((resolve) => setTimeout(resolve, 1000 * attempt)) // Exponential backoff
+        return saveWithRetry(stageData, isComplete, attempt + 1)
+      } else {
+        throw error
+      }
+    }
+  }
+
   const handleStageSubmit = async (stageData: any) => {
     // Update local store
     updateData(stageData)
 
     // Save to database
-    const saveSuccess = await saveToSupabase(stageData, currentStage === 9)
+    try {
+      const saveSuccess = await saveWithRetry(stageData, currentStage === 9)
 
-    if (!saveSuccess) return
+      if (!saveSuccess) return
 
-    // Handle stage progression
-    if (currentStage === 4 && !hasShownMidpointModal) {
-      setShowMidpointModal(true)
-      setMidpointModalShown(true)
-    } else if (currentStage === 9) {
-      // Final stage - mark as complete
-      setStage(10)
-    } else {
-      setStage(currentStage + 1)
+      // Handle stage progression
+      if (currentStage === 4 && !hasShownMidpointModal) {
+        setShowMidpointModal(true)
+        setMidpointModalShown(true)
+      } else if (currentStage === 9) {
+        // Final stage - mark as complete
+        setStage(10)
+      } else {
+        setStage(currentStage + 1)
+      }
+    } catch (error) {
+      console.error("Final save failed after multiple retries:", error)
+      toast({
+        title: "Critical Error",
+        description:
+          "Failed to save your progress after multiple attempts. Please check your connection and try again later.",
+        variant: "destructive",
+      })
     }
   }
 
