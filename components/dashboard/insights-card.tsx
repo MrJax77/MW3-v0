@@ -65,7 +65,7 @@ export function InsightsCard({ initialInsight }: InsightsCardProps) {
   }
 
   return (
-    <Card className="col-span-full">
+    <Card className="col-span-full" data-insights-card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2">

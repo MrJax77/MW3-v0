@@ -18,7 +18,7 @@ export async function signOut() {
 }
 
 export async function signInWithMagicLink(email: string) {
-  // For development, use localhost. For production, use the actual domain
+  // Get the current origin, use the actual domain for redirects
   const origin = typeof window !== "undefined" ? window.location.origin : ""
   const redirectTo = `${origin}/auth/callback`
 
