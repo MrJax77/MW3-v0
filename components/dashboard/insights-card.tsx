@@ -16,9 +16,15 @@ interface Insight {
 
 interface InsightsCardProps {
   initialInsight: Insight | null
+  canGenerateInsights?: boolean
+  profileCompleteness?: number
 }
 
-export function InsightsCard({ initialInsight }: InsightsCardProps) {
+export function InsightsCard({
+  initialInsight,
+  canGenerateInsights = true,
+  profileCompleteness = 0,
+}: InsightsCardProps) {
   const [insight, setInsight] = useState<Insight | null>(initialInsight)
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
@@ -74,7 +80,7 @@ export function InsightsCard({ initialInsight }: InsightsCardProps) {
           </CardTitle>
           <CardDescription>Personalized coaching tips based on your progress</CardDescription>
         </div>
-        <Button onClick={generateDailyTip} disabled={isLoading} variant="outline" size="sm">
+        <Button onClick={generateDailyTip} disabled={isLoading || !canGenerateInsights} variant="outline" size="sm">
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -100,17 +106,32 @@ export function InsightsCard({ initialInsight }: InsightsCardProps) {
         ) : (
           <div className="text-center py-6">
             <Lightbulb className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground mb-4">No insights yet</p>
-            <Button onClick={generateDailyTip} disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                "Generate Your First Tip"
-              )}
-            </Button>
+            {canGenerateInsights ? (
+              <>
+                <p className="text-muted-foreground mb-4">No insights yet</p>
+                <Button onClick={generateDailyTip} disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    "Generate Your First Tip"
+                  )}
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-muted-foreground mb-2">Complete your profile to unlock insights</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  You need {50 - profileCompleteness}% more profile completion to generate personalized coaching
+                  insights.
+                </p>
+                <Button disabled variant="outline">
+                  Complete Profile First
+                </Button>
+              </>
+            )}
           </div>
         )}
       </CardContent>

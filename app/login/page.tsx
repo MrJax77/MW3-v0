@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { signInWithOTP, verifyOTP } from "@/lib/supabase"
 import { Mail, Loader2, RefreshCw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import Image from "next/image"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -109,7 +110,17 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Welcome to MW3-GPT</CardTitle>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <Image
+              src="/mw3-logo.png"
+              alt="MW3 Logo"
+              width={80}
+              height={40}
+              className="h-12 w-auto rounded-full bg-white p-2 shadow-md"
+            />
+            <div className="text-lg font-light text-muted-foreground">GPT</div>
+          </div>
+          <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
           <CardDescription>
             {!isOtpSent
               ? "Enter your email to receive a verification code"

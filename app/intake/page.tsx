@@ -1,159 +1,333 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { useIntakeStore, stepKeys } from "@/lib/intake-store"
-import { supabase, getUser } from "@/lib/supabase"
-import { ProgressBar } from "@/components/intake/progress-bar"
-import { HalfwayModal } from "@/components/intake/halfway-modal"
-import { IdentityForm } from "@/components/intake/step-forms/identity-form"
-import { HouseholdForm } from "@/components/intake/step-forms/household-form"
-import { MindsetForm } from "@/components/intake/step-forms/mindset-form"
-import { WellnessForm } from "@/components/intake/step-forms/wellness-form"
-import { PurposeForm } from "@/components/intake/step-forms/purpose-form"
+import { useIntakeStore } from "@/lib/intake-store"
+import { getUser } from "@/lib/supabase"
+import { getProfile } from "@/lib/actions"
+import { StageProgress } from "@/components/intake/stage-progress"
+import { WelcomeScreen } from "@/components/intake/welcome-screen"
+import { MidpointModal } from "@/components/intake/midpoint-modal"
+import { PreferencesScreen } from "@/components/intake/preferences-screen"
+import { SuccessScreen } from "@/components/intake/success-screen"
+import { BasicInfoForm } from "@/components/intake/module-forms/basic-info-form"
+import { RelationshipsForm } from "@/components/intake/module-forms/relationships-form"
+import { HealthWellnessForm } from "@/components/intake/module-forms/health-wellness-form"
+import { MindsetStressForm } from "@/components/intake/module-forms/mindset-stress-form"
+import { RoutineForm } from "@/components/intake/module-forms/routine-form"
+import { FutureGoalsForm } from "@/components/intake/module-forms/future-goals-form"
+import { ValuesForm } from "@/components/intake/module-forms/values-form"
+import { TechnologyForm } from "@/components/intake/module-forms/technology-form"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2, Save, Clock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { saveIntakeModule } from "@/lib/actions"
+
+const AUTOSAVE_INTERVAL = 30000 // 30 seconds
 
 export default function IntakePage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { currentStep, data, setStep, updateData, resetForm } = useIntakeStore()
-  const [isLoading, setIsLoading] = useState(false)
-  const [showHalfwayModal, setShowHalfwayModal] = useState(false)
-  const [userId, setUserId] = useState<string | null>(null)
+  const {
+    currentStage,
+    data,
+    hasShownMidpointModal,
+    isInitialized,
+    setStage,
+    updateData,
+    setMidpointModalShown,
+    updateLastAutoSave,
+    finishLater,
+    resetForm,
+    initializeFromProfile,
+    setInitialized,
+  } = useIntakeStore()
 
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isInitializing, setIsInitializing] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [showMidpointModal, setShowMidpointModal] = useState(false)
+
+  // Initialize user and load existing profile data
   useEffect(() => {
     const initUser = async () => {
-      const user = await getUser()
-      if (user) {
+      try {
+        const user = await getUser()
+        if (!user) {
+          router.push("/login")
+          return
+        }
         setUserId(user.id)
+
+        // Load existing profile data if not already initialized
+        if (!isInitialized) {
+          try {
+            const existingProfile = await getProfile()
+            if (existingProfile) {
+              console.log("Loading existing profile data:", existingProfile)
+              initializeFromProfile(existingProfile)
+
+              // Show success message if resuming
+              if (existingProfile.completed_stages > 0) {
+                toast({
+                  title: "Welcome back!",
+                  description: `Resuming from stage ${existingProfile.completed_stages + 1}. Your progress has been saved.`,
+                })
+              }
+            } else {
+              // No existing profile, start fresh
+              setInitialized(true)
+            }
+          } catch (error) {
+            console.error("Error loading profile:", error)
+            // Continue with fresh start if profile load fails
+            setInitialized(true)
+          }
+        }
+      } catch (error) {
+        console.error("Error initializing user:", error)
+        router.push("/login")
+      } finally {
+        setIsInitializing(false)
       }
     }
-    initUser()
-  }, [])
 
-  const saveToSupabase = async (stepData: any) => {
-    if (!userId) return
+    initUser()
+  }, [router, isInitialized, initializeFromProfile, setInitialized, toast])
+
+  // Auto-save functionality
+  const autoSave = useCallback(async () => {
+    if (!userId || currentStage === 0 || currentStage === 10) return
+
+    setIsSaving(true)
+    try {
+      await saveIntakeModule({
+        ...data,
+        completed_stages: currentStage,
+      })
+      updateLastAutoSave()
+    } catch (error) {
+      console.error("Auto-save failed:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }, [userId, currentStage, data, updateLastAutoSave])
+
+  // Set up auto-save interval
+  useEffect(() => {
+    const interval = setInterval(autoSave, AUTOSAVE_INTERVAL)
+    return () => clearInterval(interval)
+  }, [autoSave])
+
+  const saveToSupabase = async (stageData: any, isComplete = false) => {
+    if (!userId) {
+      toast({
+        title: "Error",
+        description: "User not authenticated. Please log in again.",
+        variant: "destructive",
+      })
+      router.push("/login")
+      return false
+    }
 
     setIsLoading(true)
     try {
-      const stepKey = stepKeys[currentStep - 1]
-      const { error } = await supabase.from("profiles").upsert({
-        user_id: userId,
-        [stepKey]: stepData,
-        updated_at: new Date().toISOString(),
-      })
+      const saveData = {
+        ...data,
+        ...stageData,
+        completed_stages: currentStage,
+        is_complete: isComplete,
+      }
 
-      if (error) throw error
+      await saveIntakeModule(saveData)
 
-      toast({
-        title: "Progress saved",
-        description: "Your information has been saved successfully.",
-      })
+      if (!isComplete) {
+        toast({
+          title: "Progress saved",
+          description: "Your information has been saved successfully.",
+        })
+      }
+      return true
     } catch (error) {
-      console.error("Error saving to Supabase:", error)
+      console.error("Error saving stage:", error)
+
+      let errorMessage = "Failed to save your progress. Please try again."
+      if (error instanceof Error) {
+        if (error.message.includes("not authenticated")) {
+          errorMessage = "Session expired. Please log in again."
+          router.push("/login")
+          return false
+        }
+      }
+
       toast({
         title: "Error",
-        description: "Failed to save your progress. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       })
+      return false
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleStepSubmit = async (stepData: any) => {
-    const stepKey = stepKeys[currentStep - 1]
-    updateData(stepKey, stepData)
+  const handleStageSubmit = async (stageData: any) => {
+    // Update local store
+    updateData(stageData)
 
-    await saveToSupabase(stepData)
+    // Save to database
+    const saveSuccess = await saveToSupabase(stageData, currentStage === 9)
 
-    if (currentStep === 5) {
-      setShowHalfwayModal(true)
-    } else if (currentStep === 10) {
-      // Final step - redirect to dashboard
-      router.push("/dashboard")
+    if (!saveSuccess) return
+
+    // Handle stage progression
+    if (currentStage === 4 && !hasShownMidpointModal) {
+      setShowMidpointModal(true)
+      setMidpointModalShown(true)
+    } else if (currentStage === 9) {
+      // Final stage - mark as complete
+      setStage(10)
     } else {
-      setStep(currentStep + 1)
+      setStage(currentStage + 1)
     }
   }
 
-  const handleHalfwayContinue = () => {
-    setShowHalfwayModal(false)
-    setStep(6)
+  const handleMidpointKeepGoing = () => {
+    setShowMidpointModal(false)
+    setStage(5)
   }
 
-  const handleHalfwayLater = () => {
-    setShowHalfwayModal(false)
+  const handleMidpointFinishLater = async () => {
+    finishLater()
+    await saveToSupabase(data, false)
+    setShowMidpointModal(false)
+    router.push("/dashboard")
+  }
+
+  const handleSaveAndFinishLater = async () => {
+    finishLater()
+    await saveToSupabase(data, false)
     router.push("/dashboard")
   }
 
   const handleBack = () => {
-    if (currentStep > 1) {
-      setStep(currentStep - 1)
+    if (currentStage > 0) {
+      setStage(currentStage - 1)
     }
   }
 
-  const renderCurrentStep = () => {
-    const stepKey = stepKeys[currentStep - 1]
-    const defaultValues = data[stepKey]
+  const handleGoToDashboard = () => {
+    router.push("/dashboard")
+  }
 
-    switch (currentStep) {
+  const renderCurrentStage = () => {
+    switch (currentStage) {
+      case 0:
+        return <WelcomeScreen onStart={handleStageSubmit} />
       case 1:
-        return <IdentityForm defaultValues={defaultValues} onSubmit={handleStepSubmit} />
+        return <BasicInfoForm defaultValues={data} onSubmit={handleStageSubmit} />
       case 2:
-        return <HouseholdForm defaultValues={defaultValues} onSubmit={handleStepSubmit} />
+        return <RelationshipsForm defaultValues={data} onSubmit={handleStageSubmit} />
       case 3:
-        return <MindsetForm defaultValues={defaultValues} onSubmit={handleStepSubmit} />
+        return <HealthWellnessForm defaultValues={data} onSubmit={handleStageSubmit} />
       case 4:
-        return <WellnessForm defaultValues={defaultValues} onSubmit={handleStepSubmit} />
+        return <MindsetStressForm defaultValues={data} onSubmit={handleStageSubmit} />
       case 5:
-        return <PurposeForm defaultValues={defaultValues} onSubmit={handleStepSubmit} />
+        return <RoutineForm defaultValues={data} onSubmit={handleStageSubmit} />
       case 6:
-        return <div className="text-center p-8">Work form coming soon...</div>
+        return <FutureGoalsForm defaultValues={data} onSubmit={handleStageSubmit} />
       case 7:
-        return <div className="text-center p-8">Lifestyle form coming soon...</div>
+        return <ValuesForm defaultValues={data} onSubmit={handleStageSubmit} />
       case 8:
-        return <div className="text-center p-8">Devices form coming soon...</div>
+        return <TechnologyForm defaultValues={data} onSubmit={handleStageSubmit} />
       case 9:
-        return <div className="text-center p-8">Finance form coming soon...</div>
+        return <PreferencesScreen defaultValues={data} onSubmit={handleStageSubmit} profileSummary={data} />
       case 10:
-        return <div className="text-center p-8">Preferences form coming soon...</div>
+        return <SuccessScreen onGoToDashboard={handleGoToDashboard} userName={data.first_name} />
       default:
-        return <div>Invalid step</div>
+        return <div>Invalid stage</div>
     }
+  }
+
+  const showNavigation = currentStage > 0 && currentStage < 10
+  const showSaveAndFinishLater = currentStage >= 1 && currentStage <= 8
+
+  // Show loading screen while initializing
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading your profile...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted p-4">
       <div className="max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <Button
-            variant="ghost"
-            onClick={handleBack}
-            disabled={currentStep === 1 || isLoading}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Button>
-          <h1 className="text-2xl font-bold">MW3-GPT Intake</h1>
-          <div className="w-16" /> {/* Spacer for centering */}
-        </div>
-
-        <ProgressBar step={currentStep} totalSteps={10} />
-
-        {isLoading && (
-          <div className="flex items-center justify-center p-4">
-            <Loader2 className="h-6 w-6 animate-spin mr-2" />
-            <span>Saving your progress...</span>
+        {/* Header with Navigation */}
+        {showNavigation && (
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              onClick={handleBack}
+              disabled={currentStage === 0 || isLoading}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+            <div className="text-center">
+              <h1 className="text-xl font-bold">MW3-GPT Setup</h1>
+              {isSaving && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Save className="h-3 w-3" />
+                  Auto-saving...
+                </p>
+              )}
+            </div>
+            <div className="w-16" /> {/* Spacer */}
           </div>
         )}
 
-        {renderCurrentStep()}
+        {/* Progress Bar */}
+        {showNavigation && <StageProgress currentStage={currentStage} totalStages={10} />}
 
-        <HalfwayModal isOpen={showHalfwayModal} onContinue={handleHalfwayContinue} onLater={handleHalfwayLater} />
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+            <Loader2 className="h-6 w-6 animate-spin mr-2 text-blue-600" />
+            <span className="text-blue-800 dark:text-blue-200">Saving your progress...</span>
+          </div>
+        )}
+
+        {/* Current Stage Content */}
+        {renderCurrentStage()}
+
+        {/* Save and Finish Later Button */}
+        {showSaveAndFinishLater && (
+          <div className="text-center pt-4 border-t">
+            <Button
+              variant="ghost"
+              onClick={handleSaveAndFinishLater}
+              disabled={isLoading}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Clock className="mr-2 h-4 w-4" />
+              Save & Finish Later
+            </Button>
+          </div>
+        )}
+
+        {/* Midpoint Modal */}
+        <MidpointModal
+          isOpen={showMidpointModal}
+          onKeepGoing={handleMidpointKeepGoing}
+          onFinishLater={handleMidpointFinishLater}
+        />
       </div>
     </div>
   )

@@ -1,85 +1,70 @@
 import { z } from "zod"
 
-export const identitySchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  age: z.number().min(18, "Must be 18 or older").max(120),
-  gender: z.string().min(1, "Please select a gender"),
-  location: z.string().min(1, "Location is required"),
+// Module 1: Basic Info
+export const basicInfoSchema = z.object({
+  first_name: z.string().min(1, "First name is required"),
+  age: z.number().min(0).max(100),
+  role: z.string().min(1, "Please select your role"),
+  spouse_name: z.string().optional(),
+  children_count: z.number().min(0).max(10),
+  children_ages: z.string().optional(),
 })
 
-export const householdSchema = z.object({
-  maritalStatus: z.string().min(1, "Please select marital status"),
-  children: z.number().min(0),
-  householdSize: z.number().min(1),
-  livingArrangement: z.string().min(1, "Please select living arrangement"),
+// Module 2: Relationships
+export const relationshipsSchema = z.object({
+  spouse_relationship_rating: z.number().min(0).max(10),
+  spouse_relationship_reason: z.string().min(1, "Please explain your rating"),
+  children_relationship_rating: z.number().min(0).max(10),
+  children_relationship_reason: z.string().min(1, "Please explain your rating"),
+  spouse_relationship_goal: z.string().min(1, "Please share a relationship goal"),
+  parenting_goal: z.string().min(1, "Please share a parenting goal"),
+  upcoming_events: z.array(z.string()),
 })
 
-export const mindsetSchema = z.object({
-  personalityType: z.string().min(1, "Please select personality type"),
-  stressLevel: z.number().min(1).max(10),
-  motivationStyle: z.string().min(1, "Please select motivation style"),
-  learningStyle: z.string().min(1, "Please select learning style"),
+// Module 3: Health & Wellness
+export const healthWellnessSchema = z.object({
+  current_health_rating: z.number().min(0).max(10),
+  health_rating_reason: z.string().min(1, "Please explain your rating"),
+  health_goal: z.string().min(1, "Please share a health goal"),
+  exercise_frequency: z.number().min(0).max(7),
+  sleep_hours: z.number().min(0).max(10),
 })
 
-export const wellnessSchema = z.object({
-  fitnessLevel: z.string().min(1, "Please select fitness level"),
-  healthGoals: z.array(z.string()).min(1, "Select at least one health goal"),
-  sleepHours: z.number().min(4).max(12),
-  dietaryRestrictions: z.array(z.string()),
+// Module 4: Mindset & Stress
+export const mindsetStressSchema = z.object({
+  current_stress_level: z.number().min(0).max(10),
+  stress_rating_reason: z.string().min(1, "Please explain your stress level"),
+  personal_goal: z.string().min(1, "Please share a personal goal"),
+  mindfulness_practices: z.array(z.string()),
 })
 
-export const purposeSchema = z.object({
-  lifeGoals: z.array(z.string()).min(1, "Select at least one life goal"),
-  values: z.array(z.string()).min(1, "Select at least one value"),
-  passions: z.string().min(1, "Please describe your passions"),
-  legacy: z.string().min(1, "Please describe your desired legacy"),
+// Module 5: Routine
+export const routineSchema = z.object({
+  routine_description: z.string().min(10, "Please describe your typical weekday in detail"),
 })
 
-export const workSchema = z.object({
-  occupation: z.string().min(1, "Occupation is required"),
-  workStyle: z.string().min(1, "Please select work style"),
-  careerGoals: z.array(z.string()).min(1, "Select at least one career goal"),
-  workLifeBalance: z.number().min(1).max(10),
+// Module 6: Future Goals
+export const futureGoalsSchema = z.object({
+  family_future_goal: z.string().min(1, "Please share your family's future goal"),
 })
 
-export const lifestyleSchema = z.object({
-  hobbies: z.array(z.string()).min(1, "Select at least one hobby"),
-  socialLevel: z.number().min(1).max(10),
-  travelFrequency: z.string().min(1, "Please select travel frequency"),
-  environmentalConcern: z.number().min(1).max(10),
+// Module 7: Technology (Expert)
+export const technologySchema = z.object({
+  wearable_usage: z.array(z.string()),
 })
 
-export const devicesSchema = z.object({
-  primaryDevice: z.string().min(1, "Please select primary device"),
-  screenTime: z.number().min(0).max(24),
-  techComfort: z.number().min(1).max(10),
-  preferredApps: z.array(z.string()),
-})
-
-export const financeSchema = z.object({
-  incomeRange: z.string().min(1, "Please select income range"),
-  financialGoals: z.array(z.string()).min(1, "Select at least one financial goal"),
-  investmentExperience: z.string().min(1, "Please select investment experience"),
-  budgetingStyle: z.string().min(1, "Please select budgeting style"),
-})
-
-export const preferencesSchema = z.object({
-  communicationStyle: z.string().min(1, "Please select communication style"),
-  coachingFrequency: z.string().min(1, "Please select coaching frequency"),
-  reminderPreference: z.array(z.string()).min(1, "Select at least one reminder preference"),
-  privacyLevel: z.string().min(1, "Please select privacy level"),
+// Module 8: Values (Expert)
+export const valuesSchema = z.object({
+  family_value: z.string().min(1, "Please share a core family value"),
 })
 
 export const schemas = [
-  identitySchema,
-  householdSchema,
-  mindsetSchema,
-  wellnessSchema,
-  purposeSchema,
-  workSchema,
-  lifestyleSchema,
-  devicesSchema,
-  financeSchema,
-  preferencesSchema,
+  basicInfoSchema,
+  relationshipsSchema,
+  healthWellnessSchema,
+  mindsetStressSchema,
+  routineSchema,
+  futureGoalsSchema,
+  technologySchema,
+  valuesSchema,
 ]
