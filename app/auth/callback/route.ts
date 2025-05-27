@@ -8,7 +8,9 @@ export async function GET(request: NextRequest) {
   const error = requestUrl.searchParams.get("error")
   const errorDescription = requestUrl.searchParams.get("error_description")
 
-  console.log("Auth callback received:", { code: !!code, error, errorDescription })
+  // Log all URL parameters for debugging
+  console.log("Auth callback URL:", requestUrl.toString())
+  console.log("All search params:", Object.fromEntries(requestUrl.searchParams.entries()))
 
   if (error) {
     console.error("Auth error:", error, errorDescription)

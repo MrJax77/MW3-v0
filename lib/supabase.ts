@@ -17,15 +17,22 @@ export async function signOut() {
   if (error) throw error
 }
 
-export async function signInWithMagicLink(email: string) {
-  // Use the exact Vercel domain for redirects
-  const redirectTo = "https://mw3-v0.vercel.app/auth/callback"
-
+export async function signInWithOTP(email: string) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: redirectTo,
+      shouldCreateUser: true, // Allow new user creation
     },
   })
   if (error) throw error
+}
+
+export async function verifyOTP(email: string, token: string) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: "email",
+  })
+  if (error) throw error
+  return data
 }
