@@ -1,57 +1,31 @@
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
-
-export function createSupabaseServerClient() {
-  const cookieStore = cookies()
-  return createServerComponentClient({
-    cookies: () => cookieStore,
-  })
-}
-
-export function createSupabaseRouteClient() {
-  const cookieStore = cookies()
-  return createRouteHandlerClient({
-    cookies: () => cookieStore,
-  })
-}
-
-export async function getServerUser() {
-  try {
-    const supabase = createSupabaseServerClient()
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser()
-
-    if (error) {
-      console.error("Server auth error:", error)
-      return null
-    }
-
-    return user
-  } catch (error) {
-    console.error("Server user fetch error:", error)
-    return null
-  }
-}
+import { getSupabaseServerClient } from "./supabase-singleton"
+import { logDebug, logError } from "./debug-utils"
 
 export async function getServerSession() {
   try {
-    const supabase = createSupabaseServerClient()
+    const supabase = getSupabaseServerClient()
+
     const {
       data: { session },
       error,
     } = await supabase.auth.getSession()
 
     if (error) {
-      console.error("Server session error:", error)
-      return null
+      if (!error.message.includes("Auth session missing")) {
+        logError("getServerSession", error)
+      } else {
+        logDebug("getServerSession", "No auth session found")
+      }
+      return { session: null, supabase }
     }
 
-    return session
+    return { session, supabase }
   } catch (error) {
-    console.error("Server session fetch error:", error)
-    return null
+    logError("getServerSession", error)
+    return { session: null, supabase: getSupabaseServerClient() }
   }
+}
+
+export function createSupabaseServerClient() {
+  return getSupabaseServerClient()
 }

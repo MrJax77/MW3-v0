@@ -1,6 +1,8 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
+// Enhance the auth callback with better error handling and logging
+
+import { getSupabaseRouteHandlerClient } from "@/lib/supabase-singleton"
 import { type NextRequest, NextResponse } from "next/server"
+import { logDebug, logError } from "@/lib/debug-utils"
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
@@ -9,42 +11,59 @@ export async function GET(request: NextRequest) {
   const errorDescription = requestUrl.searchParams.get("error_description")
 
   // Log all URL parameters for debugging
-  console.log("Auth callback URL:", requestUrl.toString())
-  console.log("All search params:", Object.fromEntries(requestUrl.searchParams.entries()))
+  logDebug("auth-callback", "Auth callback URL:", { url: requestUrl.toString() })
+  logDebug("auth-callback", "All search params:", { params: Object.fromEntries(requestUrl.searchParams.entries()) })
 
   if (error) {
-    console.error("Auth error:", error, errorDescription)
-    return NextResponse.redirect(new URL(`/login?error=${error}`, request.url))
+    logError("auth-callback", new Error(`Auth error: ${error} - ${errorDescription}`))
+    return NextResponse.redirect(
+      new URL(`/login?error=${error}&error_description=${encodeURIComponent(errorDescription || "")}`, request.url),
+    )
   }
 
-  if (code) {
-    const cookieStore = cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+  if (!code) {
+    logError("auth-callback", new Error("No code parameter found in callback URL"))
+    return NextResponse.redirect(new URL("/login?error=no_code", request.url))
+  }
 
-    try {
-      console.log("Attempting to exchange code for session...")
+  try {
+    const supabase = getSupabaseRouteHandlerClient()
 
-      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+    logDebug("auth-callback", "Exchanging code for session...")
 
-      if (exchangeError) {
-        console.error("Code exchange error:", exchangeError)
-        return NextResponse.redirect(new URL("/login?error=session_failed", request.url))
-      }
+    const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
-      if (data.user) {
-        console.log("User authenticated successfully:", data.user.email)
-        return NextResponse.redirect(new URL("/intake", request.url))
-      } else {
-        console.error("No user data after successful exchange")
-        return NextResponse.redirect(new URL("/login?error=no_user", request.url))
-      }
-    } catch (error) {
-      console.error("Unexpected error in auth callback:", error)
-      return NextResponse.redirect(new URL("/login?error=unexpected", request.url))
+    if (exchangeError) {
+      logError("auth-callback", exchangeError, { step: "code_exchange" })
+      return NextResponse.redirect(
+        new URL(
+          `/login?error=exchange_failed&error_description=${encodeURIComponent(exchangeError.message)}`,
+          request.url,
+        ),
+      )
     }
-  }
 
-  // No code or error, redirect to login
-  console.log("No code or error found, redirecting to login")
-  return NextResponse.redirect(new URL("/login?error=no_code", request.url))
+    if (!data.session) {
+      logError("auth-callback", new Error("No session returned after code exchange"))
+      return NextResponse.redirect(new URL("/login?error=no_session", request.url))
+    }
+
+    logDebug("auth-callback", "Session established successfully", {
+      userId: data.user?.id,
+      sessionExpires: new Date(data.session.expires_at * 1000).toISOString(),
+    })
+
+    // Verify session was properly established
+    const { data: sessionCheck, error: sessionError } = await supabase.auth.getSession()
+
+    if (sessionError || !sessionCheck.session) {
+      logError("auth-callback", sessionError || new Error("Session verification failed"))
+      return NextResponse.redirect(new URL("/login?error=session_verification_failed", request.url))
+    }
+
+    return NextResponse.redirect(new URL("/intake", request.url))
+  } catch (error) {
+    logError("auth-callback", error instanceof Error ? error : new Error(String(error)), { step: "overall_process" })
+    return NextResponse.redirect(new URL("/login?error=unexpected", request.url))
+  }
 }

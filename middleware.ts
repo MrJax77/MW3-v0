@@ -1,38 +1,66 @@
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { logDebug, logError } from "@/lib/debug-utils"
 
 export async function middleware(req: NextRequest) {
+  // Skip middleware for static files, API routes, and auth callback
+  if (
+    req.nextUrl.pathname.startsWith("/_next") ||
+    req.nextUrl.pathname.startsWith("/api") ||
+    req.nextUrl.pathname.startsWith("/auth/callback") ||
+    req.nextUrl.pathname.includes(".")
+  ) {
+    return NextResponse.next()
+  }
+
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
 
-  // Refresh session if expired - required for Server Components
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  try {
+    const supabase = createMiddlewareClient({ req, res })
 
-  // If user is signed in and the current path is /login redirect the user to /dashboard
-  if (session && req.nextUrl.pathname === "/login") {
-    return NextResponse.redirect(new URL("/dashboard", req.url))
+    // Get session without forcing refresh to avoid unnecessary calls
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession()
+
+    // Log session status for debugging
+    logDebug("middleware", `Auth check for ${req.nextUrl.pathname}`, {
+      hasSession: !!session,
+      error: error?.message,
+      userId: session?.user?.id,
+    })
+
+    // Handle authentication redirects
+    const isAuthPage = req.nextUrl.pathname === "/login"
+    const isProtectedPage = ["/dashboard", "/intake"].some((path) => req.nextUrl.pathname.startsWith(path))
+
+    if (session && isAuthPage) {
+      logDebug("middleware", "Authenticated user accessing login, redirecting to dashboard")
+      return NextResponse.redirect(new URL("/dashboard", req.url))
+    }
+
+    if (!session && isProtectedPage) {
+      logDebug("middleware", "Unauthenticated user accessing protected page, redirecting to login")
+      return NextResponse.redirect(new URL("/login", req.url))
+    }
+
+    return res
+  } catch (error) {
+    logError("middleware", error instanceof Error ? error : new Error(String(error)))
+    // Don't redirect on middleware errors, let the page handle it
+    return res
   }
-
-  // If user is not signed in and the current path is not /login or / redirect the user to /login
-  if (!session && req.nextUrl.pathname !== "/login" && req.nextUrl.pathname !== "/") {
-    return NextResponse.redirect(new URL("/login", req.url))
-  }
-
-  return res
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Only run middleware on specific routes
+    "/",
+    "/login",
+    "/dashboard/:path*",
+    "/intake/:path*",
+    "/profile/:path*",
   ],
 }

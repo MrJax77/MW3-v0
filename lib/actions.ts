@@ -1,44 +1,40 @@
 "use server"
-import { createSupabaseServerClient } from "./supabase-server"
+
+import { getSupabaseServerClient } from "./supabase-singleton"
 import { validateIntakeData, sanitizeIntakeData } from "./validation-utils"
 import { logError, logDebug, validateServerEnvironment } from "./debug-utils"
 
-export async function getProfile() {
+// Improved authentication function that uses the singleton
+async function getAuthenticatedUser() {
   try {
-    logDebug("getProfile", "Starting profile fetch")
-    validateServerEnvironment()
+    const supabase = getSupabaseServerClient()
 
-    const supabase = createSupabaseServerClient()
-
-    // Get user with better error handling
+    // Get the session first
     const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
 
-    if (userError) {
-      logError("getProfile", userError, { step: "auth.getUser" })
-      throw new Error(`Authentication failed: ${userError.message}`)
+    if (sessionError) {
+      // Only log actual errors, not missing sessions which are expected
+      if (!sessionError.message.includes("Auth session missing")) {
+        logError("getAuthenticatedUser", sessionError)
+        throw new Error(`Session error: ${sessionError.message}`)
+      } else {
+        logDebug("getAuthenticatedUser", "No auth session found (normal for unauthenticated requests)")
+      }
+      return null
     }
 
-    if (!user) {
-      logError("getProfile", new Error("No user found"))
-      throw new Error("User not authenticated")
+    if (!session) {
+      logDebug("getAuthenticatedUser", "No session found")
+      return null
     }
 
-    logDebug("getProfile", `Fetching profile for user: ${user.id}`)
-
-    const { data: profile, error } = await supabase.from("profiles").select("*").eq("user_id", user.id).single()
-
-    if (error && error.code !== "PGRST116") {
-      logError("getProfile", error, { userId: user.id, errorCode: error.code })
-      throw new Error(`Database error: ${error.message}`)
-    }
-
-    logDebug("getProfile", `Profile fetched successfully: ${profile ? "found" : "not found"}`)
-    return profile
+    // Session exists, return the user
+    return session.user
   } catch (error) {
-    logError("getProfile", error)
+    logError("getAuthenticatedUser", error)
     throw error
   }
 }
@@ -48,25 +44,17 @@ export async function saveIntakeModule(moduleData: any) {
     logDebug("saveIntakeModule", "Starting save operation", { moduleData })
     validateServerEnvironment()
 
-    const supabase = createSupabaseServerClient()
-
-    // Enhanced user authentication check
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError) {
-      logError("saveIntakeModule", userError, { step: "auth.getUser" })
-      throw new Error(`Authentication failed: ${userError.message}`)
-    }
+    // Use the improved authentication function
+    const user = await getAuthenticatedUser()
 
     if (!user) {
-      logError("saveIntakeModule", new Error("No user found"))
-      throw new Error("User not authenticated - please log in again")
+      logDebug("saveIntakeModule", "No authenticated user found")
+      throw new Error("Please log in to save your progress")
     }
 
     logDebug("saveIntakeModule", `Processing save for user: ${user.id}`)
+
+    const supabase = getSupabaseServerClient()
 
     // Add data sanitization with better error handling
     const sanitizedData = sanitizeIntakeData(moduleData)
@@ -259,8 +247,8 @@ export async function saveIntakeModule(moduleData: any) {
 
     // Provide specific error messages
     if (error instanceof Error) {
-      if (error.message.includes("not authenticated")) {
-        throw new Error("Your session has expired. Please log in again.")
+      if (error.message.includes("Please log in")) {
+        throw new Error("Please log in to save your progress")
       } else if (error.message.includes("validation failed")) {
         throw new Error("Please check your input and try again.")
       } else if (error.message.includes("connection")) {
@@ -274,37 +262,63 @@ export async function saveIntakeModule(moduleData: any) {
   }
 }
 
-export async function getIntakeProgress() {
+export async function getProfile() {
   try {
-    logDebug("getIntakeProgress", "Starting progress fetch")
+    logDebug("getProfile", "Starting profile fetch")
     validateServerEnvironment()
 
-    const supabase = createSupabaseServerClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
+    const user = await getAuthenticatedUser()
     if (!user) {
-      logError("getIntakeProgress", new Error("User not authenticated"))
-      throw new Error("User not authenticated")
+      logDebug("getProfile", "No authenticated user found")
+      return null
     }
 
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("completed_stages, is_complete, last_saved, first_name")
+    const supabase = getSupabaseServerClient()
+    logDebug("getProfile", `Fetching profile for user: ${user.id}`)
+
+    const { data: profile, error } = await supabase.from("profiles").select("*").eq("user_id", user.id).single()
+
+    if (error && error.code !== "PGRST116") {
+      logError("getProfile", error, { userId: user.id, errorCode: error.code })
+      throw new Error(`Database error: ${error.message}`)
+    }
+
+    logDebug("getProfile", `Profile fetched successfully: ${profile ? "found" : "not found"}`)
+    return profile
+  } catch (error) {
+    logError("getProfile", error)
+    throw error
+  }
+}
+
+export async function getLatestInsight() {
+  try {
+    validateServerEnvironment()
+
+    const user = await getAuthenticatedUser()
+    if (!user) {
+      logDebug("getLatestInsight", "No authenticated user found")
+      return null
+    }
+
+    const supabase = getSupabaseServerClient()
+    const { data: insight, error } = await supabase
+      .from("insights")
+      .select("*")
       .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .single()
 
     if (error && error.code !== "PGRST116") {
-      logError("getIntakeProgress", error, { userId: user.id })
-      return { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
+      logError("getLatestInsight", error, { userId: user.id })
+      return null
     }
 
-    logDebug("getIntakeProgress", { progress: profile })
-    return profile || { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
+    return insight
   } catch (error) {
-    logError("getIntakeProgress", error)
-    return { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
+    logError("getLatestInsight", error)
+    return null
   }
 }
 
@@ -382,36 +396,34 @@ export async function calculateProfileCompleteness() {
   }
 }
 
-export async function getLatestInsight() {
+export async function getIntakeProgress() {
   try {
+    logDebug("getIntakeProgress", "Starting progress fetch")
     validateServerEnvironment()
 
-    const supabase = createSupabaseServerClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
+    const user = await getAuthenticatedUser()
     if (!user) {
-      throw new Error("User not authenticated")
+      logDebug("getIntakeProgress", "No authenticated user found")
+      return { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
     }
 
-    const { data: insight, error } = await supabase
-      .from("insights")
-      .select("*")
+    const supabase = getSupabaseServerClient()
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("completed_stages, is_complete, last_saved, first_name")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
       .single()
 
     if (error && error.code !== "PGRST116") {
-      logError("getLatestInsight", error, { userId: user.id })
-      return null
+      logError("getIntakeProgress", error, { userId: user.id })
+      return { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
     }
 
-    return insight
+    logDebug("getIntakeProgress", { progress: profile })
+    return profile || { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
   } catch (error) {
-    logError("getLatestInsight", error)
-    return null
+    logError("getIntakeProgress", error)
+    return { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
   }
 }
 
@@ -419,15 +431,12 @@ export async function saveDailyLog(logData: any) {
   try {
     validateServerEnvironment()
 
-    const supabase = createSupabaseServerClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
+    const user = await getAuthenticatedUser()
     if (!user) {
-      throw new Error("User not authenticated")
+      throw new Error("Please log in to save daily logs")
     }
 
+    const supabase = getSupabaseServerClient()
     const today = new Date().toISOString().split("T")[0]
 
     const { data, error } = await supabase.from("daily_logs").upsert({
@@ -457,14 +466,12 @@ export async function resetIntakeProgress() {
   try {
     validateServerEnvironment()
 
-    const supabase = createSupabaseServerClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
+    const user = await getAuthenticatedUser()
     if (!user) {
-      throw new Error("User not authenticated")
+      throw new Error("Please log in to reset profile")
     }
+
+    const supabase = getSupabaseServerClient()
 
     // Reset all intake fields to null/default values
     const { data, error } = await supabase
@@ -574,15 +581,12 @@ export async function getProfileForIntake() {
   try {
     validateServerEnvironment()
 
-    const supabase = createSupabaseServerClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
+    const user = await getAuthenticatedUser()
     if (!user) {
-      return null // Not authenticated, return null instead of throwing
+      return null
     }
 
+    const supabase = getSupabaseServerClient()
     const { data: profile, error } = await supabase.from("profiles").select("*").eq("user_id", user.id).single()
 
     if (error && error.code !== "PGRST116") {

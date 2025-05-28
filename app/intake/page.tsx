@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useIntakeStore } from "@/lib/intake-store"
-import { getUser } from "@/lib/supabase"
-import { getProfile } from "@/lib/actions"
+import { getClientUser } from "@/lib/auth-utils"
+import { getClientProfile, testClientDatabaseConnection, saveClientIntakeModule } from "@/lib/client-actions"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { StageProgress } from "@/components/intake/stage-progress"
 import { WelcomeScreen } from "@/components/intake/welcome-screen"
@@ -20,13 +20,10 @@ import { FutureGoalsForm } from "@/components/intake/module-forms/future-goals-f
 import { ValuesForm } from "@/components/intake/module-forms/values-form"
 import { TechnologyForm } from "@/components/intake/module-forms/technology-form"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Loader2, Save, Clock, AlertTriangle } from "lucide-react"
+import { ArrowLeft, Loader2, Clock, AlertTriangle, LogIn } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { saveIntakeModule } from "@/lib/actions"
 import { WalletConflictHandler } from "@/components/wallet-conflict-handler"
-import { testDatabaseConnection } from "@/lib/connection-test"
-
-const AUTOSAVE_INTERVAL = 30000 // 30 seconds
+import { startSessionManager } from "@/lib/session-manager"
 
 function IntakePageContent() {
   const router = useRouter()
@@ -47,12 +44,19 @@ function IntakePageContent() {
   } = useIntakeStore()
 
   const [isLoading, setIsLoading] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [showMidpointModal, setShowMidpointModal] = useState(false)
   const [lastError, setLastError] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<string | null>(null)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+
+  // Initialize session manager
+  useEffect(() => {
+    const cleanup = startSessionManager()
+    return cleanup
+  }, [])
 
   // Initialize user and load existing profile data
   useEffect(() => {
@@ -60,21 +64,27 @@ function IntakePageContent() {
       try {
         console.log("🔄 Initializing user...")
 
-        const user = await getUser()
+        // Use client-side authentication function
+        const user = await getClientUser()
         if (!user) {
-          console.log("❌ No user found, redirecting to login")
-          router.push("/login")
+          console.log("❌ No user found - will show welcome screen without auth")
+          setIsAuthenticated(false)
+          setIsInitializing(false)
+          setInitialized(true) // Set initialized to true so welcome screen shows
           return
         }
 
         console.log("✅ User authenticated:", user.id)
         setUserId(user.id)
+        setIsAuthenticated(true)
+        setAuthError(null)
 
         // Load existing profile data if not already initialized
         if (!isInitialized) {
           try {
             console.log("🔄 Loading existing profile...")
-            const existingProfile = await getProfile()
+            // Use client-side profile fetching function
+            const existingProfile = await getClientProfile()
 
             if (existingProfile) {
               console.log("✅ Profile loaded:", existingProfile)
@@ -93,6 +103,15 @@ function IntakePageContent() {
             }
           } catch (error) {
             console.error("❌ Error loading profile:", error)
+
+            // Check if it's an auth error
+            if (error instanceof Error && error.message.includes("Auth session missing")) {
+              setAuthError("Your session has expired. Please log in again.")
+              setIsAuthenticated(false)
+              setIsInitializing(false)
+              return
+            }
+
             setLastError(`Profile load failed: ${error instanceof Error ? error.message : "Unknown error"}`)
             // Continue with fresh start if profile load fails
             setInitialized(true)
@@ -100,8 +119,16 @@ function IntakePageContent() {
         }
       } catch (error) {
         console.error("❌ Error initializing user:", error)
-        setLastError(`Initialization failed: ${error instanceof Error ? error.message : "Unknown error"}`)
-        router.push("/login")
+
+        if (error instanceof Error && error.message.includes("Auth session missing")) {
+          console.log("🚫 Auth session missing during init - will show welcome screen")
+          setIsAuthenticated(false)
+          setInitialized(true) // Allow welcome screen to show
+        } else {
+          setLastError(`Initialization failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+          setAuthError("Failed to initialize. Please try refreshing the page.")
+          setIsAuthenticated(false)
+        }
       } finally {
         setIsInitializing(false)
       }
@@ -110,45 +137,65 @@ function IntakePageContent() {
     initUser()
   }, [router, isInitialized, initializeFromProfile, setInitialized, toast])
 
-  // Auto-save functionality
-  const autoSave = useCallback(async () => {
-    if (!userId || currentStage === 0 || currentStage === 10) return
-
-    setIsSaving(true)
-    try {
-      console.log("🔄 Auto-saving...")
-      await saveIntakeModule({
-        ...data,
-        completed_stages: currentStage,
-      })
-      console.log("✅ Auto-save successful")
-      updateLastAutoSave()
-      setLastError(null) // Clear any previous errors
-    } catch (error) {
-      console.error("❌ Auto-save failed:", error)
-      setLastError(`Auto-save failed: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsSaving(false)
-    }
-  }, [userId, currentStage, data, updateLastAutoSave])
-
-  // Set up auto-save interval
+  // Monitor auth state
   useEffect(() => {
-    const interval = setInterval(autoSave, AUTOSAVE_INTERVAL)
-    return () => clearInterval(interval)
-  }, [autoSave])
+    const checkAuthStatus = async () => {
+      try {
+        // Use client-side authentication function
+        const user = await getClientUser()
+        setIsAuthenticated(!!user)
+        if (user) {
+          setUserId(user.id)
+        }
+      } catch (error) {
+        console.error("Error checking auth status:", error)
+      }
+    }
 
+    // Check auth status every 5 minutes to prevent session timeouts
+    const interval = setInterval(checkAuthStatus, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Update the saveToSupabase function to handle authentication errors better
   const saveToSupabase = async (stageData: any, isComplete = false) => {
-    if (!userId) {
-      const errorMsg = "Your session has expired. Please log in again."
-      setLastError(errorMsg)
-      toast({
-        title: "Authentication Error",
-        description: errorMsg,
-        variant: "destructive",
-      })
-      router.push("/login")
-      return false
+    if (!userId || !isAuthenticated) {
+      // Check authentication status again before giving up
+      try {
+        console.log("🔄 Re-checking authentication before save...")
+        // Use client-side authentication function
+        const user = await getClientUser()
+
+        if (!user) {
+          const errorMsg = "Your session has expired. Please log in again."
+          setLastError(errorMsg)
+          setAuthError(errorMsg)
+          setIsAuthenticated(false)
+          toast({
+            title: "Authentication Error",
+            description: errorMsg,
+            variant: "destructive",
+          })
+          return false
+        } else {
+          // User is authenticated, update state and continue
+          console.log("✅ Authentication re-verified successfully")
+          setUserId(user.id)
+          setIsAuthenticated(true)
+        }
+      } catch (error) {
+        console.error("❌ Authentication re-check failed:", error)
+        const errorMsg = "Your session has expired. Please log in again."
+        setLastError(errorMsg)
+        setAuthError(errorMsg)
+        setIsAuthenticated(false)
+        toast({
+          title: "Authentication Error",
+          description: errorMsg,
+          variant: "destructive",
+        })
+        return false
+      }
     }
 
     setIsLoading(true)
@@ -174,7 +221,7 @@ function IntakePageContent() {
 
       console.log("🔄 Complete save data:", saveData)
 
-      const result = await saveIntakeModule(saveData)
+      const result = await saveClientIntakeModule(saveData)
       console.log("✅ Save successful:", result)
 
       if (!isComplete) {
@@ -183,6 +230,10 @@ function IntakePageContent() {
           description: "Your information has been saved successfully.",
         })
       }
+
+      // Update last save timestamp
+      updateLastAutoSave()
+
       return true
     } catch (error) {
       console.error("❌ Save error:", error)
@@ -194,10 +245,15 @@ function IntakePageContent() {
         const errorMsg = error.message.toLowerCase()
         setLastError(error.message)
 
-        if (errorMsg.includes("session has expired") || errorMsg.includes("not authenticated")) {
+        if (
+          errorMsg.includes("session has expired") ||
+          errorMsg.includes("not authenticated") ||
+          errorMsg.includes("auth session missing")
+        ) {
           errorTitle = "Session Expired"
           errorMessage = "Your session has expired. Please log in again."
-          router.push("/login")
+          setAuthError(errorMessage)
+          setIsAuthenticated(false)
           return false
         } else if (errorMsg.includes("validation failed") || errorMsg.includes("required")) {
           errorTitle = "Missing Information"
@@ -228,15 +284,45 @@ function IntakePageContent() {
   }
 
   const handleStageSubmit = async (stageData: any) => {
-    console.log("🔄 Handling stage submit:", { currentStage, stageData })
+    console.log("🔄 Handling stage submit:", {
+      currentStage,
+      stageData,
+      isAuthenticated,
+      userId: !!userId,
+      dataKeys: Object.keys(stageData || {}),
+    })
 
-    // Update local store
+    // Update local store first (this is safe and doesn't require auth)
     updateData(stageData)
 
-    // Save to database
+    // Stage 0 (welcome screen) - just move to next stage, no saving
+    if (currentStage === 0) {
+      console.log("✅ Stage 0 (welcome) complete, moving to stage 1 - NO SAVE ATTEMPTED")
+      setStage(1)
+      return
+    }
+
+    // For stages 1+, authentication is absolutely required
+    if (!isAuthenticated || !userId) {
+      console.log("❌ Not authenticated for stage", currentStage, "- cannot save")
+      setAuthError("Please log in to save your progress")
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to save your progress and continue.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    console.log("✅ Authentication verified, proceeding with save for stage", currentStage)
+
+    // Save to database for stages 1-9
     const saveSuccess = await saveToSupabase(stageData, currentStage === 9)
 
-    if (!saveSuccess) return
+    if (!saveSuccess) {
+      console.log("❌ Save failed, not progressing to next stage")
+      return
+    }
 
     // Handle stage progression
     if (currentStage === 4 && !hasShownMidpointModal) {
@@ -256,6 +342,11 @@ function IntakePageContent() {
   }
 
   const handleMidpointFinishLater = async () => {
+    if (!isAuthenticated) {
+      setAuthError("Please log in to save your progress")
+      return
+    }
+
     finishLater()
     await saveToSupabase(data, false)
     setShowMidpointModal(false)
@@ -263,6 +354,11 @@ function IntakePageContent() {
   }
 
   const handleSaveAndFinishLater = async () => {
+    if (!isAuthenticated) {
+      setAuthError("Please log in to save your progress")
+      return
+    }
+
     finishLater()
     await saveToSupabase(data, false)
     router.push("/dashboard")
@@ -276,6 +372,10 @@ function IntakePageContent() {
 
   const handleGoToDashboard = () => {
     router.push("/dashboard")
+  }
+
+  const handleGoToLogin = () => {
+    router.push("/login")
   }
 
   const renderCurrentStage = () => {
@@ -307,8 +407,8 @@ function IntakePageContent() {
     }
   }
 
-  const showNavigation = currentStage > 0 && currentStage < 10
-  const showSaveAndFinishLater = currentStage >= 1 && currentStage <= 8
+  const showNavigation = currentStage > 0 && currentStage < 10 && (isAuthenticated || currentStage === 0)
+  const showSaveAndFinishLater = currentStage >= 1 && currentStage <= 8 && isAuthenticated
 
   // Show loading screen while initializing
   if (isInitializing) {
@@ -322,10 +422,35 @@ function IntakePageContent() {
     )
   }
 
+  // Show authentication error screen - but allow stage 0 (welcome) to proceed
+  if (!isAuthenticated && currentStage > 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <LogIn className="h-12 w-12 text-primary mx-auto mb-4" />
+          <h1 className="text-xl font-bold mb-2">Authentication Required</h1>
+          <p className="text-muted-foreground mb-4">
+            Please log in to continue with the intake form and save your progress.
+          </p>
+          <div className="space-y-2">
+            <Button onClick={handleGoToLogin} className="w-full">
+              <LogIn className="mr-2 h-4 w-4" />
+              Go to Login
+            </Button>
+            <Button variant="outline" onClick={() => setStage(0)} className="w-full">
+              Back to Welcome
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const testConnection = async () => {
     try {
       setConnectionStatus("Testing...")
-      const result = await testDatabaseConnection()
+      // Use client-side database connection test
+      const result = await testClientDatabaseConnection()
       if (result.success) {
         setConnectionStatus("✅ Database connection successful!")
         toast({
@@ -365,10 +490,10 @@ function IntakePageContent() {
             </Button>
             <div className="text-center">
               <h1 className="text-xl font-bold">MW3-GPT Setup</h1>
-              {isSaving && (
+              {isLoading && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Save className="h-3 w-3" />
-                  Auto-saving...
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Saving...
                 </p>
               )}
             </div>

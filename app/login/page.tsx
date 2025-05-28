@@ -7,21 +7,54 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { signInWithOTP, verifyOTP } from "@/lib/supabase"
 import { Mail, Loader2, RefreshCw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
+import { startSessionManager } from "@/lib/session-manager"
+import { getUser } from "@/lib/supabase"
+import { getSupabaseClient } from "@/lib/supabase-singleton"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [otp, setOtp] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isOtpSent, setIsOtpSent] = useState(false)
+  const [isRedirecting, setIsRedirecting] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const error = searchParams.get("error")
+
+  // Start session monitoring
+  useEffect(() => {
+    // Initialize the session manager for token refresh
+    const sessionCleanup = startSessionManager()
+
+    // Check for existing auth
+    const checkExistingAuth = async () => {
+      try {
+        console.log("🔍 Checking existing authentication...")
+        const user = await getUser()
+        if (user) {
+          console.log("✅ User already authenticated:", user.id)
+          console.log("🔄 Redirecting to dashboard...")
+          setIsRedirecting(true)
+          router.replace("/dashboard")
+        } else {
+          console.log("ℹ️ No existing auth session - showing login form")
+        }
+      } catch (error) {
+        console.log("ℹ️ No existing auth session (this is normal)")
+      }
+    }
+
+    checkExistingAuth()
+
+    return () => {
+      sessionCleanup()
+    }
+  }, [router])
 
   useEffect(() => {
     if (error) {
@@ -59,14 +92,28 @@ export default function LoginPage() {
 
     setIsLoading(true)
     try {
-      await signInWithOTP(email)
+      console.log("🔄 Sending OTP to:", email)
+
+      // Use the Supabase client directly for sending OTP
+      const supabase = getSupabaseClient()
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+
+      if (error) {
+        throw error
+      }
+
       setIsOtpSent(true)
       toast({
         title: "Code sent!",
         description: "Check your email for a 6-digit verification code.",
       })
     } catch (error) {
-      console.error("OTP send error:", error)
+      console.error("❌ OTP send error:", error)
       toast({
         title: "Error",
         description: "Failed to send verification code. Please try again.",
@@ -77,35 +124,79 @@ export default function LoginPage() {
     }
   }
 
+  // Update the handleVerifyOTP function to ensure proper session establishment
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!otp || otp.length !== 6) return
 
     setIsLoading(true)
     try {
-      console.log("🔄 Verifying OTP...")
-      const result = await verifyOTP(email, otp)
-      console.log("✅ OTP verification result:", result)
+      console.log("🔄 Verifying OTP for:", email)
+
+      // Use the Supabase client directly for OTP verification
+      const supabase = getSupabaseClient()
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: "email",
+      })
+
+      if (error) {
+        console.error("❌ OTP verification failed:", error)
+        throw error
+      }
+
+      console.log("✅ OTP verification successful", {
+        hasUser: !!data.user,
+        hasSession: !!data.session,
+        userId: data.user?.id,
+      })
+
+      // Verify session was properly established
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+
+      if (sessionError) {
+        console.error("❌ Session verification failed:", sessionError)
+        throw new Error("Failed to establish session after verification")
+      }
+
+      if (!session) {
+        console.error("❌ No session found after verification")
+        throw new Error("Authentication failed - no session created")
+      }
+
+      console.log("✅ Session confirmed:", {
+        userId: session.user.id,
+        expiresAt: new Date(session.expires_at * 1000).toISOString(),
+        hasRefreshToken: !!session.refresh_token,
+      })
 
       toast({
         title: "Success!",
         description: "You've been logged in successfully.",
       })
 
-      // Add a small delay to ensure the session is properly set
-      setTimeout(() => {
-        console.log("🔄 Redirecting to intake...")
-        router.push("/intake")
-        // Force a page refresh if the redirect doesn't work
-        setTimeout(() => {
-          window.location.href = "/intake"
-        }, 1000)
-      }, 500)
+      setIsRedirecting(true)
+
+      // Add a small delay to ensure cookies are properly set
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      // Use replace instead of push to prevent back navigation issues
+      console.log("🔄 Redirecting to intake...")
+      router.replace("/intake")
     } catch (error) {
-      console.error("OTP verify error:", error)
+      console.error("❌ OTP verify error:", error)
+
+      // Reset form state on error
+      setIsOtpSent(false)
+      setOtp("")
+
       toast({
         title: "Error",
-        description: "Invalid code. Please check and try again.",
+        description: error instanceof Error ? error.message : "Invalid code. Please check and try again.",
         variant: "destructive",
       })
     } finally {
@@ -116,6 +207,20 @@ export default function LoginPage() {
   const handleResendOTP = () => {
     setIsOtpSent(false)
     setOtp("")
+  }
+
+  // Show loading state while redirecting
+  if (isRedirecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center justify-center p-8">
+            <Loader2 className="h-8 w-8 animate-spin mb-4 text-primary" />
+            <p className="text-center text-muted-foreground">Redirecting to your dashboard...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -205,7 +310,7 @@ export default function LoginPage() {
               </form>
 
               <div className="text-center space-y-2">
-                <Button variant="outline" onClick={handleResendOTP} className="w-full">
+                <Button variant="outline" onClick={handleResendOTP} className="w-full" disabled={isLoading}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Send new code
                 </Button>

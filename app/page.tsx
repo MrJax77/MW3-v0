@@ -16,16 +16,21 @@ export default function HomePage() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        console.log("🔍 Checking authentication status...")
         const currentUser = await getUser()
+
         if (currentUser) {
-          // User is logged in, redirect to dashboard
-          console.log("User already logged in, redirecting to dashboard")
+          console.log("✅ User already logged in:", currentUser.id)
+          console.log("🔄 Redirecting to dashboard...")
           router.push("/dashboard")
           return
+        } else {
+          console.log("ℹ️ No user session found - showing landing page")
         }
+
         setUser(null)
       } catch (error) {
-        console.error("Auth check error:", error)
+        console.log("ℹ️ Auth check completed - no session (this is normal for new visitors)")
         setUser(null)
       } finally {
         setIsLoading(false)

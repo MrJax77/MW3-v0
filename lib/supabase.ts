@@ -1,56 +1,119 @@
-import { createClient } from "@supabase/supabase-js"
+import { getSupabaseClient, resetSupabaseClient } from "./supabase-singleton"
+import { logDebug, logError } from "./debug-utils"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
+// User authentication functions
 export async function getUser() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  return user
+  try {
+    const supabase = getSupabaseClient()
+
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
+
+    if (error) {
+      if (!error.message.includes("Auth session missing")) {
+        logError("getUser", error)
+      } else {
+        logDebug("getUser", "No auth session found")
+      }
+      return null
+    }
+
+    return user
+  } catch (error) {
+    logError("getUser", error)
+    return null
+  }
+}
+
+export async function signInWithOtp(email: string) {
+  try {
+    const supabase = getSupabaseClient()
+
+    const { data, error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+
+    if (error) {
+      logError("signInWithOtp", error)
+      throw error
+    }
+
+    return data
+  } catch (error) {
+    logError("signInWithOtp", error)
+    throw error
+  }
+}
+
+export async function verifyOtp(email: string, token: string) {
+  try {
+    const supabase = getSupabaseClient()
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: "email",
+    })
+
+    if (error) {
+      logError("verifyOtp", error)
+      throw error
+    }
+
+    return data
+  } catch (error) {
+    logError("verifyOtp", error)
+    throw error
+  }
 }
 
 export async function signOut() {
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
-}
+  try {
+    const supabase = getSupabaseClient()
 
-export async function signInWithOTP(email: string) {
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      shouldCreateUser: true, // Allow new user creation
-    },
-  })
-  if (error) throw error
-}
+    const { error } = await supabase.auth.signOut()
 
-export async function verifyOTP(email: string, token: string) {
-  console.log("🔄 Starting OTP verification...")
+    if (error) {
+      logError("signOut", error)
+      throw error
+    }
 
-  const { data, error } = await supabase.auth.verifyOtp({
-    email,
-    token,
-    type: "email",
-  })
+    // Reset the client instance after sign out
+    resetSupabaseClient()
 
-  if (error) {
-    console.error("❌ OTP verification failed:", error)
+    return true
+  } catch (error) {
+    logError("signOut", error)
     throw error
   }
+}
 
-  console.log("✅ OTP verification successful:", data)
+export async function getSession() {
+  try {
+    const supabase = getSupabaseClient()
 
-  // Wait a moment for the session to be fully established
-  await new Promise((resolve) => setTimeout(resolve, 100))
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession()
 
-  // Verify the session was created
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  console.log("🔍 Session after verification:", session ? "exists" : "missing")
+    if (error) {
+      if (!error.message.includes("Auth session missing")) {
+        logError("getSession", error)
+      } else {
+        logDebug("getSession", "No auth session found")
+      }
+      return null
+    }
 
-  return data
+    return session
+  } catch (error) {
+    logError("getSession", error)
+    return null
+  }
 }

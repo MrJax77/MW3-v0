@@ -10,9 +10,10 @@ import { InsightsCard } from "@/components/dashboard/insights-card"
 import { DailyLogDialog } from "@/components/dashboard/daily-log-dialog"
 import { ProfileCompletionCard } from "@/components/dashboard/profile-completion-card"
 import { QuickActionsCard } from "@/components/dashboard/quick-actions-card"
-import { LogOut, Target, Lightbulb, Clock } from "lucide-react"
+import { LogOut, Target, Lightbulb, Clock, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
+import { startSessionManager } from "@/lib/session-manager"
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -23,34 +24,100 @@ export default function DashboardPage() {
   const [profileCompleteness, setProfileCompleteness] = useState<any>(null)
   const [intakeProgress, setIntakeProgress] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Start the session manager
+    const cleanup = startSessionManager()
+
+    // Clean up on unmount
+    return () => {
+      cleanup()
+    }
+  }, [])
 
   useEffect(() => {
     const initDashboard = async () => {
       try {
+        console.log("🔍 Checking user authentication...")
         const currentUser = await getUser()
+
         if (!currentUser) {
+          console.log("❌ No user found, redirecting to login")
           router.push("/login")
           return
         }
+
+        console.log("✅ User authenticated:", currentUser.id)
         setUser(currentUser)
 
-        // Fetch all data in parallel
-        const [profileData, insightData, completenessData, progressData] = await Promise.all([
-          getProfile().catch(() => null),
-          getLatestInsight().catch(() => null),
-          calculateProfileCompleteness().catch(() => null),
-          getIntakeProgress().catch(() => null),
+        // Fetch all data in parallel with better error handling
+        console.log("🔄 Fetching dashboard data...")
+
+        const [profileData, insightData, completenessData, progressData] = await Promise.allSettled([
+          getProfile(),
+          getLatestInsight(),
+          calculateProfileCompleteness(),
+          getIntakeProgress(),
         ])
 
-        setProfile(profileData)
-        setInsight(insightData)
-        setProfileCompleteness(completenessData)
-        setIntakeProgress(progressData)
+        // Handle profile data
+        if (profileData.status === "fulfilled") {
+          setProfile(profileData.value)
+          console.log("✅ Profile loaded:", profileData.value ? "found" : "not found")
+        } else {
+          console.warn("⚠️ Profile fetch failed:", profileData.reason)
+          setProfile(null)
+        }
+
+        // Handle insight data
+        if (insightData.status === "fulfilled") {
+          setInsight(insightData.value)
+          console.log("✅ Insights loaded:", insightData.value ? "found" : "not found")
+        } else {
+          console.warn("⚠️ Insights fetch failed:", insightData.reason)
+          setInsight(null)
+        }
+
+        // Handle completeness data
+        if (completenessData.status === "fulfilled") {
+          setProfileCompleteness(completenessData.value)
+          console.log("✅ Completeness calculated:", completenessData.value?.percentage || 0, "%")
+        } else {
+          console.warn("⚠️ Completeness calculation failed:", completenessData.reason)
+          setProfileCompleteness({
+            percentage: 0,
+            completedStages: [],
+            missingStages: [],
+            totalStages: 10,
+            isComplete: false,
+          })
+        }
+
+        // Handle progress data
+        if (progressData.status === "fulfilled") {
+          setIntakeProgress(progressData.value)
+          console.log("✅ Progress loaded:", progressData.value?.completed_stages || 0, "stages")
+        } else {
+          console.warn("⚠️ Progress fetch failed:", progressData.reason)
+          setIntakeProgress({ completed_stages: 0, is_complete: false, last_saved: null, first_name: null })
+        }
+
+        console.log("✅ Dashboard initialization complete")
       } catch (error) {
-        console.error("Error loading dashboard:", error)
+        console.error("❌ Dashboard initialization error:", error)
+
+        // Check if it's an authentication error
+        if (error instanceof Error && error.message.includes("Auth session missing")) {
+          console.log("🔄 Auth session missing, redirecting to login")
+          router.push("/login")
+          return
+        }
+
+        setAuthError(error instanceof Error ? error.message : "Failed to load dashboard")
         toast({
           title: "Error",
-          description: "Failed to load dashboard data.",
+          description: "Failed to load dashboard data. Please try refreshing the page.",
           variant: "destructive",
         })
       } finally {
@@ -115,6 +182,20 @@ export default function DashboardPage() {
     if (!profileCompleteness) return 0
     const expertStages = profileCompleteness.completedStages.filter((stage: number) => stage >= 8 && stage <= 9)
     return Math.round((expertStages.length / 2) * 100)
+  }
+
+  // Show authentication error
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h1 className="text-xl font-bold mb-2">Authentication Error</h1>
+          <p className="text-muted-foreground mb-4">{authError}</p>
+          <Button onClick={() => router.push("/login")}>Go to Login</Button>
+        </div>
+      </div>
+    )
   }
 
   if (isLoading) {
