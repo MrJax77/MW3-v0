@@ -49,31 +49,30 @@ export async function GET() {
 
     console.log("✅ Database connection successful")
 
-    // Test authentication
+    // Test authentication - improved
     console.log("🔍 Testing authentication...")
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    const { data: userData, error: authError } = await supabase.auth.getUser()
 
-    const authStatus = authError ? "failed" : user ? "authenticated" : "anonymous"
+    let authStatus = "anonymous"
+    let userId = null
+
+    if (authError) {
+      console.log("⚠️ Auth error (expected if not logged in):", authError.message)
+      authStatus = "failed"
+    } else if (userData?.user) {
+      console.log("✅ User authenticated:", userData.user.id)
+      authStatus = "authenticated"
+      userId = userData.user.id
+    } else {
+      console.log("ℹ️ No user session (anonymous)")
+      authStatus = "anonymous"
+    }
 
     // Test table structure
     console.log("🔍 Testing table structure...")
-    const { data: tableInfo, error: tableError } = await supabase
-      .rpc("get_table_info", { table_name: "profiles" })
-      .single()
+    const { error: simpleError } = await supabase.from("profiles").select("user_id").limit(1)
 
-    // If the RPC doesn't exist, try a simple query instead
-    let tableStatus = "unknown"
-    if (tableError) {
-      console.log("ℹ️ RPC not available, testing with simple query...")
-      const { error: simpleError } = await supabase.from("profiles").select("user_id").limit(1)
-
-      tableStatus = simpleError ? "error" : "accessible"
-    } else {
-      tableStatus = "accessible"
-    }
+    const tableStatus = simpleError ? "error" : "accessible"
 
     console.log("✅ Health check completed successfully")
 
@@ -84,8 +83,9 @@ export async function GET() {
       database: "connected",
       authentication: authStatus,
       table_access: tableStatus,
-      user_id: user?.id || null,
+      user_id: userId,
       supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 30) + "...",
+      debug_mode: process.env.NEXT_PUBLIC_DEBUG_MODE === "true",
     })
   } catch (error) {
     console.error("❌ Health check failed:", error)

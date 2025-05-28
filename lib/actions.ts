@@ -13,22 +13,27 @@ export async function getProfile() {
     const cookieStore = cookies()
     const supabaseServer = createServerComponentClient({ cookies: () => cookieStore })
 
-    const {
-      data: { user },
-    } = await supabaseServer.auth.getUser()
+    // Enhanced authentication check
+    const { data: userData, error: userError } = await supabaseServer.auth.getUser()
 
-    if (!user) {
-      logError("getProfile", new Error("User not authenticated"))
+    if (userError) {
+      logError("getProfile", userError, { step: "auth.getUser" })
+      throw new Error(`Authentication failed: ${userError.message}`)
+    }
+
+    if (!userData?.user) {
+      logError("getProfile", new Error("No user data returned"))
       throw new Error("User not authenticated")
     }
 
+    const user = userData.user
     logDebug("getProfile", `Fetching profile for user: ${user.id}`)
 
     const { data: profile, error } = await supabaseServer.from("profiles").select("*").eq("user_id", user.id).single()
 
     if (error && error.code !== "PGRST116") {
-      logError("getProfile", error, { userId: user.id })
-      throw new Error("Failed to fetch profile")
+      logError("getProfile", error, { userId: user.id, errorCode: error.code })
+      throw new Error(`Database error: ${error.message}`)
     }
 
     logDebug("getProfile", `Profile fetched successfully: ${profile ? "found" : "not found"}`)
@@ -41,7 +46,7 @@ export async function getProfile() {
 
 export async function saveIntakeModule(moduleData: any) {
   try {
-    logDebug("saveIntakeModule", "Starting save operation")
+    logDebug("saveIntakeModule", "Starting save operation", { moduleData })
 
     // Add environment validation
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
@@ -60,7 +65,7 @@ export async function saveIntakeModule(moduleData: any) {
     }
 
     if (!userData?.user) {
-      throw new Error("User not authenticated")
+      throw new Error("User not authenticated - no user data")
     }
 
     const user = userData.user
@@ -68,6 +73,7 @@ export async function saveIntakeModule(moduleData: any) {
 
     // Add data sanitization with better error handling
     const sanitizedData = sanitizeIntakeData(moduleData)
+    logDebug("saveIntakeModule", "Data sanitized", { sanitizedData })
 
     // Enhanced validation
     const validation = validateIntakeData(sanitizedData, sanitizedData.completed_stages || 0)
@@ -190,7 +196,7 @@ export async function saveIntakeModule(moduleData: any) {
       }
     })
 
-    logDebug("saveIntakeModule", { dbData })
+    logDebug("saveIntakeModule", "Prepared database data", { dbData })
 
     // Enhanced database operation with retry logic
     let retryCount = 0
@@ -198,6 +204,8 @@ export async function saveIntakeModule(moduleData: any) {
 
     while (retryCount < maxRetries) {
       try {
+        logDebug("saveIntakeModule", `Attempting database save (attempt ${retryCount + 1})`)
+
         const { data, error } = await supabaseServer
           .from("profiles")
           .upsert(dbData, { onConflict: "user_id" })
@@ -211,6 +219,7 @@ export async function saveIntakeModule(moduleData: any) {
             errorCode: error.code,
             errorDetails: error.details,
             errorHint: error.hint,
+            dbData: JSON.stringify(dbData, null, 2),
           })
 
           // Handle specific error codes
@@ -235,7 +244,7 @@ export async function saveIntakeModule(moduleData: any) {
           }
         }
 
-        logDebug("saveIntakeModule", { savedData: data })
+        logDebug("saveIntakeModule", "Save successful", { savedData: data })
         return data
       } catch (dbError) {
         if (retryCount >= maxRetries - 1) {
