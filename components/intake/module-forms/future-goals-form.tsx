@@ -4,9 +4,8 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { futureGoalsSchema } from "@/lib/intake-schemas"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Textarea } from "@/components/ui/textarea"
+import { EnhancedTextarea } from "@/components/ui/enhanced-textarea"
 import type { z } from "zod"
 
 type FutureGoalsData = z.infer<typeof futureGoalsSchema>
@@ -20,12 +19,21 @@ export function FutureGoalsForm({ defaultValues, onSubmit }: FutureGoalsFormProp
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors, isValid },
   } = useForm<FutureGoalsData>({
     resolver: zodResolver(futureGoalsSchema),
     defaultValues,
     mode: "onChange",
   })
+
+  const watchedFamilyFutureGoal = watch("family_future_goal") || ""
+
+  // Form context to help the AI understand the purpose of this form
+  const formContext = `This form is about the user's long-term vision and goals for their family. 
+  We're looking for meaningful, aspirational responses about what they hope to achieve as a family.
+  This could include travel plans, lifestyle goals, legacy creation, or community impact.`
 
   return (
     <Card>
@@ -38,13 +46,12 @@ export function FutureGoalsForm({ defaultValues, onSubmit }: FutureGoalsFormProp
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="family_future_goal">
-              Looking beyond the next few months, what is one big family goal or dream you hope to achieve in the
-              future?
-            </Label>
-            <Textarea
-              id="family_future_goal"
-              {...register("family_future_goal")}
+            <EnhancedTextarea
+              label="Looking beyond the next few months, what is one big family goal or dream you hope to achieve in the future?"
+              field="family_future_goal"
+              formContext={formContext}
+              value={watchedFamilyFutureGoal}
+              onValueChange={(value) => setValue("family_future_goal", value, { shouldValidate: true })}
               placeholder="Think about your family's 'North Star' - what you're working toward together. This could be:
 • A major family experience (travel, adventure, tradition)
 • A lifestyle goal (financial freedom, moving somewhere special)
@@ -54,7 +61,7 @@ export function FutureGoalsForm({ defaultValues, onSubmit }: FutureGoalsFormProp
 
 Be as specific or aspirational as you'd like!"
               rows={6}
-              className="min-h-[150px]"
+              maxLength={1000}
             />
             {errors.family_future_goal && (
               <p className="text-sm text-destructive">{errors.family_future_goal.message}</p>

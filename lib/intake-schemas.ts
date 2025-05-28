@@ -30,12 +30,12 @@ export const healthWellnessSchema = z.object({
   sleep_hours: z.number().min(0).max(10),
 })
 
-// Module 4: Mindset & Stress
+// Module 4: Mindset & Stress - Fixed schema
 export const mindsetStressSchema = z.object({
   current_stress_level: z.number().min(0).max(10),
   stress_rating_reason: z.string().min(1, "Please explain your stress level"),
   personal_goal: z.string().min(1, "Please share a personal goal"),
-  mindfulness_practices: z.array(z.string()),
+  mindfulness_practices: z.array(z.string()).min(0),
 })
 
 // Module 5: Routine
@@ -48,14 +48,14 @@ export const futureGoalsSchema = z.object({
   family_future_goal: z.string().min(1, "Please share your family's future goal"),
 })
 
-// Module 7: Technology (Expert)
-export const technologySchema = z.object({
-  wearable_usage: z.array(z.string()),
-})
-
-// Module 8: Values (Expert)
+// Module 7: Values (Expert)
 export const valuesSchema = z.object({
   family_value: z.string().min(1, "Please share a core family value"),
+})
+
+// Module 8: Technology (Expert)
+export const technologySchema = z.object({
+  wearable_usage: z.array(z.string()),
 })
 
 export const schemas = [
@@ -65,8 +65,8 @@ export const schemas = [
   mindsetStressSchema,
   routineSchema,
   futureGoalsSchema,
-  technologySchema,
   valuesSchema,
+  technologySchema,
 ]
 
 // Legacy schemas for backward compatibility

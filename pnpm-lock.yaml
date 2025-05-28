@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@ai-sdk/openai':
         specifier: latest
-        version: 1.3.22(zod@3.25.32)
+        version: 1.3.22(zod@3.25.34)
       '@hookform/resolvers':
         specifier: latest
         version: 5.0.1(react-hook-form@7.56.4(react@19.0.0))
@@ -103,7 +103,7 @@ importers:
         version: 2.49.8
       ai:
         specifier: latest
-        version: 4.3.16(react@19.0.0)(zod@3.25.32)
+        version: 4.3.16(react@19.0.0)(zod@3.25.34)
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.20(postcss@8.0.0)
@@ -172,7 +172,7 @@ importers:
         version: 0.9.6(@types/react-dom@19.0.0)(@types/react@19.0.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       zod:
         specifier: latest
-        version: 3.25.32
+        version: 3.25.34
       zustand:
         specifier: latest
         version: 5.0.5(@types/react@19.0.0)(immer@10.1.1)(react@19.0.0)(use-sync-external-store@1.5.0(react@19.0.0))
@@ -1413,8 +1413,8 @@ packages:
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
 
-  electron-to-chromium@1.5.159:
-    resolution: {integrity: sha512-CEvHptWAMV5p6GJ0Lq8aheyvVbfzVrv5mmidu1D3pidoVNkB3tTBsTMVtPJ+rzRK5oV229mCLz9Zj/hNvU8GBA==}
+  electron-to-chromium@1.5.160:
+    resolution: {integrity: sha512-8yQk54/CoCQT8GX3zuxqPBwMAQuIr6dWI/qO8Aah/JAZwB5XmCbEElsqb1n4pzc2vpkTdfc/kbyNPJOjswfbgg==}
 
   embla-carousel-react@8.5.1:
     resolution: {integrity: sha512-z9Y0K84BJvhChXgqn2CFYbfEi6AwEr+FFVVKm/MqbTQ2zIzO1VQri6w67LcfpVF0AjbhwVMywDZqY4alYkjW5w==}
@@ -2072,8 +2072,8 @@ packages:
     peerDependencies:
       zod: ^3.24.1
 
-  zod@3.25.32:
-    resolution: {integrity: sha512-OSm2xTIRfW8CV5/QKgngwmQW/8aPfGdaQFlrGoErlgg/Epm7cjb6K6VEyExfe65a3VybUOnu381edLb0dfJl0g==}
+  zod@3.25.34:
+    resolution: {integrity: sha512-lZHvSc2PpWdcfpHlyB33HA9nqP16GpC9IpiG4lYq9jZCJVLZNnWd6Y1cj79bcLSBKTkxepfpjckPv5Y5VOPlwA==}
 
   zustand@5.0.5:
     resolution: {integrity: sha512-mILtRfKW9xM47hqxGIxCv12gXusoY/xTSHBYApXozR0HmQv299whhBeeAcRy+KrPPybzosvJBCOmVjq6x12fCg==}
@@ -2095,39 +2095,39 @@ packages:
 
 snapshots:
 
-  '@ai-sdk/openai@1.3.22(zod@3.25.32)':
+  '@ai-sdk/openai@1.3.22(zod@3.25.34)':
     dependencies:
       '@ai-sdk/provider': 1.1.3
-      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.32)
-      zod: 3.25.32
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.34)
+      zod: 3.25.34
 
-  '@ai-sdk/provider-utils@2.2.8(zod@3.25.32)':
+  '@ai-sdk/provider-utils@2.2.8(zod@3.25.34)':
     dependencies:
       '@ai-sdk/provider': 1.1.3
       nanoid: 3.3.11
       secure-json-parse: 2.7.0
-      zod: 3.25.32
+      zod: 3.25.34
 
   '@ai-sdk/provider@1.1.3':
     dependencies:
       json-schema: 0.4.0
 
-  '@ai-sdk/react@1.2.12(react@19.0.0)(zod@3.25.32)':
+  '@ai-sdk/react@1.2.12(react@19.0.0)(zod@3.25.34)':
     dependencies:
-      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.32)
-      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.32)
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.34)
+      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.34)
       react: 19.0.0
       swr: 2.3.3(react@19.0.0)
       throttleit: 2.1.0
     optionalDependencies:
-      zod: 3.25.32
+      zod: 3.25.34
 
-  '@ai-sdk/ui-utils@1.2.11(zod@3.25.32)':
+  '@ai-sdk/ui-utils@1.2.11(zod@3.25.34)':
     dependencies:
       '@ai-sdk/provider': 1.1.3
-      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.32)
-      zod: 3.25.32
-      zod-to-json-schema: 3.24.5(zod@3.25.32)
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.34)
+      zod: 3.25.34
+      zod-to-json-schema: 3.24.5(zod@3.25.34)
 
   '@alloc/quick-lru@5.2.0': {}
 
@@ -3101,15 +3101,15 @@ snapshots:
     dependencies:
       '@types/node': 22.0.0
 
-  ai@4.3.16(react@19.0.0)(zod@3.25.32):
+  ai@4.3.16(react@19.0.0)(zod@3.25.34):
     dependencies:
       '@ai-sdk/provider': 1.1.3
-      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.32)
-      '@ai-sdk/react': 1.2.12(react@19.0.0)(zod@3.25.32)
-      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.32)
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.34)
+      '@ai-sdk/react': 1.2.12(react@19.0.0)(zod@3.25.34)
+      '@ai-sdk/ui-utils': 1.2.11(zod@3.25.34)
       '@opentelemetry/api': 1.9.0
       jsondiffpatch: 0.6.0
-      zod: 3.25.32
+      zod: 3.25.34
     optionalDependencies:
       react: 19.0.0
 
@@ -3161,7 +3161,7 @@ snapshots:
   browserslist@4.24.5:
     dependencies:
       caniuse-lite: 1.0.30001718
-      electron-to-chromium: 1.5.159
+      electron-to-chromium: 1.5.160
       node-releases: 2.0.19
       update-browserslist-db: 1.1.3(browserslist@4.24.5)
 
@@ -3301,7 +3301,7 @@ snapshots:
 
   eastasianwidth@0.2.0: {}
 
-  electron-to-chromium@1.5.159: {}
+  electron-to-chromium@1.5.160: {}
 
   embla-carousel-react@8.5.1(react@19.0.0):
     dependencies:
@@ -3942,11 +3942,11 @@ snapshots:
 
   yaml@2.8.0: {}
 
-  zod-to-json-schema@3.24.5(zod@3.25.32):
+  zod-to-json-schema@3.24.5(zod@3.25.34):
     dependencies:
-      zod: 3.25.32
+      zod: 3.25.34
 
-  zod@3.25.32: {}
+  zod@3.25.34: {}
 
   zustand@5.0.5(@types/react@19.0.0)(immer@10.1.1)(react@19.0.0)(use-sync-external-store@1.5.0(react@19.0.0)):
     optionalDependencies:

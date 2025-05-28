@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Mail, Loader2, RefreshCw } from "lucide-react"
+import { Mail, Loader2, RefreshCw, Shield } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
 import { startSessionManager } from "@/lib/session-manager"
@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isOtpSent, setIsOtpSent] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [imageError, setImageError] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
@@ -133,7 +134,10 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          shouldCreateUser: true,
+          data: {
+            email_confirm: false, // Disable magic link
+          },
         },
       })
 
@@ -291,13 +295,21 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <Image
-              src="/mw3-logo.png"
-              alt="MW3 Logo"
-              width={80}
-              height={40}
-              className="h-12 w-auto rounded-full bg-white p-2 shadow-md"
-            />
+            {imageError ? (
+              <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
+                <Shield className="h-6 w-6 text-white" />
+              </div>
+            ) : (
+              <Image
+                src="/mw3-logo.png"
+                alt="MW3 Logo"
+                width={80}
+                height={40}
+                className="h-12 w-auto rounded-full bg-white p-2 shadow-md"
+                onError={() => setImageError(true)}
+                priority
+              />
+            )}
             <div className="text-lg font-light text-muted-foreground">GPT</div>
           </div>
           <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>

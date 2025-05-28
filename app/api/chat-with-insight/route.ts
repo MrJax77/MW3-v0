@@ -3,6 +3,9 @@ import { openai } from "@ai-sdk/openai"
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { type NextRequest, NextResponse } from "next/server"
+import { AI_MODELS } from "@/lib/ai-config"
+import { retrieveRelevantDocuments, formatDocumentsAsContext, storeDocument } from "@/lib/rag-utils"
+import { logDebug, logError } from "@/lib/debug-utils"
 
 interface ChatMessage {
   role: "user" | "assistant" | "system"
@@ -15,6 +18,7 @@ export async function POST(request: NextRequest) {
     const cookieStore = cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
 
+    // Verify authentication
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -45,6 +49,16 @@ export async function POST(request: NextRequest) {
           .join("\n")
       : ""
 
+    // Retrieve relevant documents using RAG
+    const relevantDocuments = await retrieveRelevantDocuments(
+      `${message} ${insight} ${insightType} ${focusArea || ""}`,
+      user.id,
+      "coaching_insights",
+    )
+
+    // Format documents as context
+    const documentContext = formatDocumentsAsContext(relevantDocuments)
+
     // Create the prompt
     const prompt = `You are MW3-GPT, a sophisticated family coaching AI specializing in personalized guidance. 
 You're having a conversation with ${profile.first_name || "the user"} about a daily insight they received.
@@ -64,7 +78,16 @@ ${profile.children_count > 0 ? `- Children ages: ${profile.children_ages || "Not
 - Personal goal: ${profile.personal_goal || "Not specified"}
 - Family goal: ${profile.family_future_goal || "Not specified"}
 
-${formattedChatHistory ? `PREVIOUS CONVERSATION:\n${formattedChatHistory}\n` : ""}
+${
+  formattedChatHistory
+    ? `PREVIOUS CONVERSATION:
+${formattedChatHistory}
+`
+    : ""
+}
+
+RELEVANT COACHING KNOWLEDGE:
+${documentContext}
 
 USER'S QUESTION: ${message}
 
@@ -79,9 +102,14 @@ Your response should be thorough but concise, focusing on quality guidance rathe
 
 IMPORTANT: Respond in plain text only. Do not use any markdown formatting such as **bold**, *italic*, \`code\`, or # headers. Use simple bullet points (•) for lists if needed, but avoid all other formatting.`
 
-    // Generate response using OpenAI
+    logDebug("chat-with-insight", `Generating response with ${AI_MODELS.ADVANCED_REASONING} model`, {
+      insightType,
+      focusArea,
+    })
+
+    // Generate response using the advanced reasoning model
     const { text } = await generateText({
-      model: openai("gpt-4o"),
+      model: openai(AI_MODELS.ADVANCED_REASONING),
       prompt,
       maxTokens: 800,
       temperature: 0.7,
@@ -97,12 +125,24 @@ IMPORTANT: Respond in plain text only. Do not use any markdown formatting such a
       metadata: {
         insightType,
         focusArea,
+        rag_documents_used: relevantDocuments.length,
       },
     })
 
+    // Store this interaction as a document for future RAG
+    if (text.length > 100) {
+      await storeDocument(`Q: ${message}\nA: ${text}`, user.id, {
+        source: "chat_interaction",
+        category: "coaching_insights",
+        date_created: new Date().toISOString(),
+        insight_type: insightType,
+        focus_area: focusArea,
+      })
+    }
+
     return NextResponse.json({ response: text })
   } catch (error) {
-    console.error("Error in chat with insight:", error)
+    logError("chat-with-insight", error instanceof Error ? error.message : String(error))
     return NextResponse.json({ error: "Failed to process chat" }, { status: 500 })
   }
 }

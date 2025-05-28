@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Lightbulb, Settings, TrendingUp, Heart, Target, MessageSquare } from "lucide-react"
+import { Lightbulb, Settings, TrendingUp, Heart, Target, MessageSquare, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface QuickActionsCardProps {
@@ -12,6 +12,7 @@ interface QuickActionsCardProps {
   onNavigateToProfileEditor: () => void
   onViewInsights: () => void
   onViewChatHistory: () => void
+  onViewAISettings?: () => void // Add this new prop
 }
 
 export function QuickActionsCard({
@@ -21,6 +22,7 @@ export function QuickActionsCard({
   onNavigateToProfileEditor,
   onViewInsights,
   onViewChatHistory,
+  onViewAISettings, // Add this new parameter
 }: QuickActionsCardProps) {
   const percentage = profileCompleteness?.percentage || 0
   const hasBasicInfo = profile?.first_name && profile?.role
@@ -180,6 +182,17 @@ export function QuickActionsCard({
             )}
           >
             View Chat History
+          </Button>
+          <Button
+            onClick={onViewAISettings}
+            className={cn(
+              "w-full mt-2",
+              "bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700",
+              "text-white border-none",
+            )}
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            AI Usage Settings
           </Button>
         </CardContent>
       </Card>

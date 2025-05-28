@@ -162,7 +162,7 @@ export async function signInWithOTP(email: string) {
       email,
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        // Remove emailRedirectTo to force OTP-only flow
       },
     })
 

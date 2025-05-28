@@ -4,9 +4,8 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { routineSchema } from "@/lib/intake-schemas"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Textarea } from "@/components/ui/textarea"
+import { EnhancedTextarea } from "@/components/ui/enhanced-textarea"
 import type { z } from "zod"
 
 type RoutineData = z.infer<typeof routineSchema>
@@ -20,12 +19,21 @@ export function RoutineForm({ defaultValues, onSubmit }: RoutineFormProps) {
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors, isValid },
   } = useForm<RoutineData>({
     resolver: zodResolver(routineSchema),
     defaultValues,
     mode: "onChange",
   })
+
+  const watchedRoutineDescription = watch("routine_description") || ""
+
+  // Form context to help the AI understand the purpose of this form
+  const formContext = `This form is about the user's typical daily routine and schedule.
+  We're looking for detailed descriptions of their family's weekday routine from morning to evening.
+  This helps us identify opportunities for positive changes and timely support in their daily life.`
 
   return (
     <Card>
@@ -38,13 +46,12 @@ export function RoutineForm({ defaultValues, onSubmit }: RoutineFormProps) {
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="routine_description">
-              Briefly describe a typical weekday in your family (morning routine, work/school, evening, etc.), including
-              any regular habits like family dinners or exercise.
-            </Label>
-            <Textarea
-              id="routine_description"
-              {...register("routine_description")}
+            <EnhancedTextarea
+              label="Briefly describe a typical weekday in your family (morning routine, work/school, evening, etc.), including any regular habits like family dinners or exercise."
+              field="routine_description"
+              formContext={formContext}
+              value={watchedRoutineDescription}
+              onValueChange={(value) => setValue("routine_description", value, { shouldValidate: true })}
               placeholder="Walk us through your day from morning to evening. Include details like:
 • Morning routine (wake up time, breakfast, getting kids ready)
 • Work schedule and responsibilities
@@ -53,7 +60,7 @@ export function RoutineForm({ defaultValues, onSubmit }: RoutineFormProps) {
 • Any regular family activities or personal habits
 • Weekend differences (if any)"
               rows={8}
-              className="min-h-[200px]"
+              maxLength={2000}
             />
             {errors.routine_description && (
               <p className="text-sm text-destructive">{errors.routine_description.message}</p>

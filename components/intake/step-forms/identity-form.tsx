@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import type { z } from "zod"
+import { EnhancedInput } from "@/components/ui/enhanced-input"
 
 type IdentityFormData = z.infer<typeof identitySchema>
 
@@ -42,13 +43,25 @@ export function IdentityForm({ defaultValues, onSubmit }: IdentityFormProps) {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
-              <Input id="firstName" {...register("firstName")} placeholder="Enter your first name" />
+              <EnhancedInput
+                label="First Name"
+                field="firstName"
+                formContext="This form collects basic identity information about the user."
+                value={watch("firstName") || ""}
+                onValueChange={(value) => setValue("firstName", value, { shouldValidate: true })}
+                placeholder="Enter your first name"
+              />
               {errors.firstName && <p className="text-sm text-destructive">{errors.firstName.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
-              <Input id="lastName" {...register("lastName")} placeholder="Enter your last name" />
+              <EnhancedInput
+                label="Last Name"
+                field="lastName"
+                formContext="This form collects basic identity information about the user."
+                value={watch("lastName") || ""}
+                onValueChange={(value) => setValue("lastName", value, { shouldValidate: true })}
+                placeholder="Enter your last name"
+              />
               {errors.lastName && <p className="text-sm text-destructive">{errors.lastName.message}</p>}
             </div>
           </div>
@@ -76,8 +89,14 @@ export function IdentityForm({ defaultValues, onSubmit }: IdentityFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="location">Location</Label>
-            <Input id="location" {...register("location")} placeholder="City, State/Country" />
+            <EnhancedInput
+              label="Location"
+              field="location"
+              formContext="This form collects basic identity information about the user."
+              value={watch("location") || ""}
+              onValueChange={(value) => setValue("location", value, { shouldValidate: true })}
+              placeholder="City, State/Country"
+            />
             {errors.location && <p className="text-sm text-destructive">{errors.location.message}</p>}
           </div>
 

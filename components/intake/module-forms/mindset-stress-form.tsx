@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
-import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
 import type { z } from "zod"
+import { EnhancedTextarea } from "@/components/ui/enhanced-textarea"
+import { Checkbox } from "@/components/ui/checkbox"
+import { useEffect } from "react"
+import { logDebug } from "@/lib/debug-utils"
 
 type MindsetStressData = z.infer<typeof mindsetStressSchema>
 
@@ -36,31 +38,73 @@ export function MindsetStressForm({ defaultValues, onSubmit }: MindsetStressForm
     handleSubmit,
     setValue,
     watch,
-    formState: { errors, isValid },
+    trigger,
+    formState: { errors, isValid, isSubmitting, isDirty },
   } = useForm<MindsetStressData>({
     resolver: zodResolver(mindsetStressSchema),
     defaultValues: {
       current_stress_level: 5,
-      mindfulness_practices: [],
-      ...defaultValues,
+      stress_rating_reason: defaultValues?.stress_rating_reason || "",
+      personal_goal: defaultValues?.personal_goal || "",
+      mindfulness_practices: defaultValues?.mindfulness_practices || [],
     },
     mode: "onChange",
   })
 
   const watchedStressLevel = watch("current_stress_level") || 5
   const watchedMindfulnessPractices = watch("mindfulness_practices") || []
+  const watchedStressRatingReason = watch("stress_rating_reason")
+  const watchedPersonalGoal = watch("personal_goal")
+
+  // Debug form state
+  useEffect(() => {
+    logDebug("mindset-form", "Form state:", {
+      isValid,
+      isDirty,
+      errors,
+      values: {
+        current_stress_level: watchedStressLevel,
+        stress_rating_reason: watchedStressRatingReason,
+        personal_goal: watchedPersonalGoal,
+        mindfulness_practices: watchedMindfulnessPractices,
+      },
+    })
+  }, [
+    isValid,
+    isDirty,
+    errors,
+    watchedStressLevel,
+    watchedStressRatingReason,
+    watchedPersonalGoal,
+    watchedMindfulnessPractices,
+  ])
 
   const handlePracticeChange = (practice: string, checked: boolean) => {
-    const current = watchedMindfulnessPractices
+    const current = [...(watchedMindfulnessPractices || [])]
+
     if (checked) {
-      setValue("mindfulness_practices", [...current, practice])
+      // If selecting "None currently", deselect all others
+      if (practice === "None currently") {
+        setValue("mindfulness_practices", ["None currently"], { shouldValidate: true })
+        return
+      }
+
+      // If selecting any other option, remove "None currently" if present
+      const newPractices = current.filter((p) => p !== "None currently")
+      setValue("mindfulness_practices", [...newPractices, practice], { shouldValidate: true })
     } else {
       setValue(
         "mindfulness_practices",
         current.filter((p) => p !== practice),
+        { shouldValidate: true },
       )
     }
   }
+
+  // Validate form on mount to ensure button state is correct
+  useEffect(() => {
+    trigger()
+  }, [trigger])
 
   return (
     <Card>
@@ -76,7 +120,7 @@ export function MindsetStressForm({ defaultValues, onSubmit }: MindsetStressForm
             </Label>
             <Slider
               value={[watchedStressLevel]}
-              onValueChange={(value) => setValue("current_stress_level", value[0])}
+              onValueChange={(value) => setValue("current_stress_level", value[0], { shouldValidate: true })}
               max={10}
               min={0}
               step={1}
@@ -92,10 +136,15 @@ export function MindsetStressForm({ defaultValues, onSubmit }: MindsetStressForm
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="stress_rating_reason">Why did you give that rating for your stress level?</Label>
-            <Textarea
-              id="stress_rating_reason"
-              {...register("stress_rating_reason")}
+            <EnhancedTextarea
+              label="Why did you give that rating for your stress level?"
+              field="stress_rating_reason"
+              formContext="This form collects information about the user's mental wellness, stress levels, and personal development goals."
+              value={watchedStressRatingReason || ""}
+              onValueChange={(value) => {
+                setValue("stress_rating_reason", value, { shouldValidate: true })
+                trigger("stress_rating_reason")
+              }}
               placeholder="Describe what's contributing to your stress level (work, family, health, finances, etc.)..."
               rows={3}
             />
@@ -105,12 +154,15 @@ export function MindsetStressForm({ defaultValues, onSubmit }: MindsetStressForm
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="personal_goal">
-              What personal habit or skill would you like to develop in the next 3 months?
-            </Label>
-            <Textarea
-              id="personal_goal"
-              {...register("personal_goal")}
+            <EnhancedTextarea
+              label="What personal habit or skill would you like to develop in the next 3 months?"
+              field="personal_goal"
+              formContext="This form collects information about the user's mental wellness, stress levels, and personal development goals."
+              value={watchedPersonalGoal || ""}
+              onValueChange={(value) => {
+                setValue("personal_goal", value, { shouldValidate: true })
+                trigger("personal_goal")
+              }}
               placeholder="e.g., start meditating, build a reading habit, learn a new skill, practice gratitude..."
               rows={2}
             />
@@ -124,7 +176,7 @@ export function MindsetStressForm({ defaultValues, onSubmit }: MindsetStressForm
                 <div key={practice} className="flex items-center space-x-2">
                   <Checkbox
                     id={practice}
-                    checked={watchedMindfulnessPractices.includes(practice)}
+                    checked={watchedMindfulnessPractices?.includes(practice) || false}
                     onCheckedChange={(checked) => handlePracticeChange(practice, checked as boolean)}
                   />
                   <Label htmlFor={practice} className="text-sm">
@@ -135,9 +187,17 @@ export function MindsetStressForm({ defaultValues, onSubmit }: MindsetStressForm
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={!isValid}>
+          <Button type="submit" className="w-full" disabled={isSubmitting || !isValid}>
             Continue to Daily Routine
           </Button>
+
+          {/* Debug information */}
+          {process.env.NEXT_PUBLIC_DEBUG_MODE === "true" && (
+            <div className="mt-4 p-2 border border-dashed border-gray-300 rounded text-xs">
+              <p>Debug: Form valid: {isValid ? "Yes" : "No"}</p>
+              <p>Errors: {Object.keys(errors).length > 0 ? JSON.stringify(errors) : "None"}</p>
+            </div>
+          )}
         </form>
       </CardContent>
     </Card>

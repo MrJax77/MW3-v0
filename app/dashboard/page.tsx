@@ -10,6 +10,7 @@ import { InsightsCard } from "@/components/dashboard/insights-card"
 import { DailyLogDialog } from "@/components/dashboard/daily-log-dialog"
 import { ProfileCompletionCard } from "@/components/dashboard/profile-completion-card"
 import { QuickActionsCard } from "@/components/dashboard/quick-actions-card"
+// Add the import for Sparkles icon
 import { LogOut, Target, Lightbulb, Clock, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
@@ -306,6 +307,9 @@ export default function DashboardPage() {
   // Get user's first name for the chat
   const userName = profile?.first_name || intakeProgress?.first_name || "User"
 
+  // Add the handler function for navigating to AI settings
+  const handleViewAISettings = () => router.push("/settings/ai-usage")
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted p-4">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -413,6 +417,7 @@ export default function DashboardPage() {
             })
           }}
           onViewChatHistory={() => router.push("/chat-history")} // Added new prop
+          onViewAISettings={handleViewAISettings} // Add this new prop
         />
       </div>
     </div>

@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
-import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import type { z } from "zod"
+import { EnhancedTextarea } from "@/components/ui/enhanced-textarea"
 
 type RelationshipsData = z.infer<typeof relationshipsSchema>
 
@@ -95,12 +95,12 @@ export function RelationshipsForm({ defaultValues, onSubmit }: RelationshipsForm
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="spouse_relationship_reason">
-              Why did you choose that rating for your relationship with your spouse?
-            </Label>
-            <Textarea
-              id="spouse_relationship_reason"
-              {...register("spouse_relationship_reason")}
+            <EnhancedTextarea
+              label="Why did you choose that rating for your relationship with your spouse?"
+              field="spouse_relationship_reason"
+              formContext="This form collects information about the user's family dynamics and relationship goals."
+              value={watch("spouse_relationship_reason") || ""}
+              onValueChange={(value) => setValue("spouse_relationship_reason", value, { shouldValidate: true })}
               placeholder="Describe what's working well or what challenges you're facing..."
               rows={3}
             />
@@ -132,12 +132,12 @@ export function RelationshipsForm({ defaultValues, onSubmit }: RelationshipsForm
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="children_relationship_reason">
-              Why did you choose that rating for your relationship with your children?
-            </Label>
-            <Textarea
-              id="children_relationship_reason"
-              {...register("children_relationship_reason")}
+            <EnhancedTextarea
+              label="Why did you choose that rating for your relationship with your children?"
+              field="children_relationship_reason"
+              formContext="This form collects information about the user's family dynamics and relationship goals."
+              value={watch("children_relationship_reason") || ""}
+              onValueChange={(value) => setValue("children_relationship_reason", value, { shouldValidate: true })}
               placeholder="Share what's going well or what you'd like to improve..."
               rows={3}
             />
@@ -147,12 +147,12 @@ export function RelationshipsForm({ defaultValues, onSubmit }: RelationshipsForm
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="spouse_relationship_goal">
-              What's one goal you have for your relationship with your spouse in the next 3 months?
-            </Label>
-            <Textarea
-              id="spouse_relationship_goal"
-              {...register("spouse_relationship_goal")}
+            <EnhancedTextarea
+              label="What's one goal you have for your relationship with your spouse in the next 3 months?"
+              field="spouse_relationship_goal"
+              formContext="This form collects information about the user's family dynamics and relationship goals."
+              value={watch("spouse_relationship_goal") || ""}
+              onValueChange={(value) => setValue("spouse_relationship_goal", value, { shouldValidate: true })}
               placeholder="e.g., Have more date nights, communicate better, plan a trip together..."
               rows={2}
             />
@@ -162,12 +162,12 @@ export function RelationshipsForm({ defaultValues, onSubmit }: RelationshipsForm
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="parenting_goal">
-              What experiences or values do you want to emphasize with your children in the next 3 months?
-            </Label>
-            <Textarea
-              id="parenting_goal"
-              {...register("parenting_goal")}
+            <EnhancedTextarea
+              label="What experiences or values do you want to emphasize with your children in the next 3 months?"
+              field="parenting_goal"
+              formContext="This form collects information about the user's family dynamics and relationship goals."
+              value={watch("parenting_goal") || ""}
+              onValueChange={(value) => setValue("parenting_goal", value, { shouldValidate: true })}
               placeholder="e.g., Spend more quality time, teach responsibility, create family traditions..."
               rows={2}
             />

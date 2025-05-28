@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Textarea } from "@/components/ui/textarea"
 import type { z } from "zod"
+import { EnhancedTextarea } from "@/components/ui/enhanced-textarea"
 
 type PurposeFormData = z.infer<typeof purposeSchema>
 
@@ -138,10 +138,12 @@ export function PurposeForm({ defaultValues, onSubmit }: PurposeFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="passions">What are you passionate about?</Label>
-            <Textarea
-              id="passions"
-              {...register("passions")}
+            <EnhancedTextarea
+              label="What are you passionate about?"
+              field="passions"
+              formContext="This form collects information about the user's deeper motivations, life goals, and core values."
+              value={watch("passions") || ""}
+              onValueChange={(value) => setValue("passions", value, { shouldValidate: true })}
               placeholder="Describe what energizes and excites you..."
               rows={3}
             />
@@ -149,10 +151,12 @@ export function PurposeForm({ defaultValues, onSubmit }: PurposeFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="legacy">What legacy do you want to leave?</Label>
-            <Textarea
-              id="legacy"
-              {...register("legacy")}
+            <EnhancedTextarea
+              label="What legacy do you want to leave?"
+              field="legacy"
+              formContext="This form collects information about the user's deeper motivations, life goals, and core values."
+              value={watch("legacy") || ""}
+              onValueChange={(value) => setValue("legacy", value, { shouldValidate: true })}
               placeholder="How do you want to be remembered? What impact do you want to make?"
               rows={3}
             />

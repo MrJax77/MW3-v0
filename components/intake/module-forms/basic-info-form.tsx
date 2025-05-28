@@ -4,12 +4,12 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { basicInfoSchema } from "@/lib/intake-schemas"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
 import type { z } from "zod"
+import { EnhancedInput } from "@/components/ui/enhanced-input"
 
 type BasicInfoData = z.infer<typeof basicInfoSchema>
 
@@ -48,8 +48,14 @@ export function BasicInfoForm({ defaultValues, onSubmit }: BasicInfoFormProps) {
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="first_name">What is your first name?</Label>
-            <Input id="first_name" {...register("first_name")} placeholder="Enter your first name" />
+            <EnhancedInput
+              label="What is your first name?"
+              field="first_name"
+              formContext="This form collects basic personal information about the user and their family."
+              value={watch("first_name") || ""}
+              onValueChange={(value) => setValue("first_name", value, { shouldValidate: true })}
+              placeholder="Enter your first name"
+            />
             {errors.first_name && <p className="text-sm text-destructive">{errors.first_name.message}</p>}
           </div>
 
@@ -88,8 +94,14 @@ export function BasicInfoForm({ defaultValues, onSubmit }: BasicInfoFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="spouse_name">What is your spouse or partner's first name? (if applicable)</Label>
-            <Input id="spouse_name" {...register("spouse_name")} placeholder="Enter partner's name (optional)" />
+            <EnhancedInput
+              label="What is your spouse or partner's first name? (if applicable)"
+              field="spouse_name"
+              formContext="This form collects basic personal information about the user and their family."
+              value={watch("spouse_name") || ""}
+              onValueChange={(value) => setValue("spouse_name", value, { shouldValidate: true })}
+              placeholder="Enter partner's name (optional)"
+            />
           </div>
 
           <div className="space-y-2">
@@ -114,8 +126,14 @@ export function BasicInfoForm({ defaultValues, onSubmit }: BasicInfoFormProps) {
 
           {watchedChildrenCount > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="children_ages">What are the ages of your children?</Label>
-              <Input id="children_ages" {...register("children_ages")} placeholder="e.g., 5, 8, 12 or toddler, teen" />
+              <EnhancedInput
+                label="What are the ages of your children?"
+                field="children_ages"
+                formContext="This form collects basic personal information about the user and their family."
+                value={watch("children_ages") || ""}
+                onValueChange={(value) => setValue("children_ages", value, { shouldValidate: true })}
+                placeholder="e.g., 5, 8, 12 or toddler, teen"
+              />
             </div>
           )}
 
