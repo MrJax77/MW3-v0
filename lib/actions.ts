@@ -1,5 +1,5 @@
 "use server"
-import { createSupabaseServerClient, getServerUser } from "./supabase-server"
+import { createSupabaseServerClient } from "./supabase-server"
 import { validateIntakeData, sanitizeIntakeData } from "./validation-utils"
 import { logError, logDebug, validateServerEnvironment } from "./debug-utils"
 
@@ -8,13 +8,24 @@ export async function getProfile() {
     logDebug("getProfile", "Starting profile fetch")
     validateServerEnvironment()
 
-    const user = await getServerUser()
+    const supabase = createSupabaseServerClient()
+
+    // Get user with better error handling
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError) {
+      logError("getProfile", userError, { step: "auth.getUser" })
+      throw new Error(`Authentication failed: ${userError.message}`)
+    }
+
     if (!user) {
-      logError("getProfile", new Error("User not authenticated"))
+      logError("getProfile", new Error("No user found"))
       throw new Error("User not authenticated")
     }
 
-    const supabase = createSupabaseServerClient()
     logDebug("getProfile", `Fetching profile for user: ${user.id}`)
 
     const { data: profile, error } = await supabase.from("profiles").select("*").eq("user_id", user.id).single()
@@ -37,8 +48,21 @@ export async function saveIntakeModule(moduleData: any) {
     logDebug("saveIntakeModule", "Starting save operation", { moduleData })
     validateServerEnvironment()
 
-    const user = await getServerUser()
+    const supabase = createSupabaseServerClient()
+
+    // Enhanced user authentication check
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError) {
+      logError("saveIntakeModule", userError, { step: "auth.getUser" })
+      throw new Error(`Authentication failed: ${userError.message}`)
+    }
+
     if (!user) {
+      logError("saveIntakeModule", new Error("No user found"))
       throw new Error("User not authenticated - please log in again")
     }
 
@@ -57,8 +81,6 @@ export async function saveIntakeModule(moduleData: any) {
       })
       throw new Error(`Validation failed: ${validation.errors.join(", ")}`)
     }
-
-    const supabase = createSupabaseServerClient()
 
     // Test database connection before attempting save
     const { error: connectionError } = await supabase.from("profiles").select("user_id").limit(1)
@@ -257,13 +279,16 @@ export async function getIntakeProgress() {
     logDebug("getIntakeProgress", "Starting progress fetch")
     validateServerEnvironment()
 
-    const user = await getServerUser()
+    const supabase = createSupabaseServerClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
     if (!user) {
       logError("getIntakeProgress", new Error("User not authenticated"))
       throw new Error("User not authenticated")
     }
 
-    const supabase = createSupabaseServerClient()
     const { data: profile, error } = await supabase
       .from("profiles")
       .select("completed_stages, is_complete, last_saved, first_name")
@@ -361,12 +386,15 @@ export async function getLatestInsight() {
   try {
     validateServerEnvironment()
 
-    const user = await getServerUser()
+    const supabase = createSupabaseServerClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
     if (!user) {
       throw new Error("User not authenticated")
     }
 
-    const supabase = createSupabaseServerClient()
     const { data: insight, error } = await supabase
       .from("insights")
       .select("*")
@@ -391,12 +419,15 @@ export async function saveDailyLog(logData: any) {
   try {
     validateServerEnvironment()
 
-    const user = await getServerUser()
+    const supabase = createSupabaseServerClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
     if (!user) {
       throw new Error("User not authenticated")
     }
 
-    const supabase = createSupabaseServerClient()
     const today = new Date().toISOString().split("T")[0]
 
     const { data, error } = await supabase.from("daily_logs").upsert({
@@ -426,12 +457,14 @@ export async function resetIntakeProgress() {
   try {
     validateServerEnvironment()
 
-    const user = await getServerUser()
+    const supabase = createSupabaseServerClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
     if (!user) {
       throw new Error("User not authenticated")
     }
-
-    const supabase = createSupabaseServerClient()
 
     // Reset all intake fields to null/default values
     const { data, error } = await supabase
@@ -541,12 +574,15 @@ export async function getProfileForIntake() {
   try {
     validateServerEnvironment()
 
-    const user = await getServerUser()
+    const supabase = createSupabaseServerClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
     if (!user) {
       return null // Not authenticated, return null instead of throwing
     }
 
-    const supabase = createSupabaseServerClient()
     const { data: profile, error } = await supabase.from("profiles").select("*").eq("user_id", user.id).single()
 
     if (error && error.code !== "PGRST116") {

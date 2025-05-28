@@ -1,4 +1,4 @@
-import { createSupabaseServerClient, getServerUser } from "@/lib/supabase-server"
+import { createSupabaseRouteClient } from "@/lib/supabase-server"
 import { NextResponse } from "next/server"
 
 export async function GET() {
@@ -25,7 +25,8 @@ export async function GET() {
 
     console.log("✅ Environment variables present")
 
-    const supabase = createSupabaseServerClient()
+    // Use route handler client for API routes
+    const supabase = createSupabaseRouteClient()
 
     // Test basic database connection
     console.log("🔍 Testing database connection...")
@@ -47,14 +48,20 @@ export async function GET() {
 
     console.log("✅ Database connection successful")
 
-    // Test authentication using our improved method
+    // Test authentication using route handler client
     console.log("🔍 Testing authentication...")
-    const user = await getServerUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
 
     let authStatus = "anonymous"
     let userId = null
 
-    if (user) {
+    if (authError) {
+      console.log("⚠️ Auth error:", authError.message)
+      authStatus = "failed"
+    } else if (user) {
       console.log("✅ User authenticated:", user.id)
       authStatus = "authenticated"
       userId = user.id
