@@ -83,12 +83,24 @@ export default function LoginPage() {
 
     setIsLoading(true)
     try {
-      await verifyOTP(email, otp)
+      console.log("🔄 Verifying OTP...")
+      const result = await verifyOTP(email, otp)
+      console.log("✅ OTP verification result:", result)
+
       toast({
         title: "Success!",
         description: "You've been logged in successfully.",
       })
-      router.push("/intake")
+
+      // Add a small delay to ensure the session is properly set
+      setTimeout(() => {
+        console.log("🔄 Redirecting to intake...")
+        router.push("/intake")
+        // Force a page refresh if the redirect doesn't work
+        setTimeout(() => {
+          window.location.href = "/intake"
+        }, 1000)
+      }, 500)
     } catch (error) {
       console.error("OTP verify error:", error)
       toast({

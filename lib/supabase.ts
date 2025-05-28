@@ -28,11 +28,29 @@ export async function signInWithOTP(email: string) {
 }
 
 export async function verifyOTP(email: string, token: string) {
+  console.log("🔄 Starting OTP verification...")
+
   const { data, error } = await supabase.auth.verifyOtp({
     email,
     token,
     type: "email",
   })
-  if (error) throw error
+
+  if (error) {
+    console.error("❌ OTP verification failed:", error)
+    throw error
+  }
+
+  console.log("✅ OTP verification successful:", data)
+
+  // Wait a moment for the session to be fully established
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  // Verify the session was created
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  console.log("🔍 Session after verification:", session ? "exists" : "missing")
+
   return data
 }
