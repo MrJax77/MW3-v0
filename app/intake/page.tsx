@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, Loader2, Save, Clock, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { saveIntakeModule } from "@/lib/actions"
+import { WalletConflictHandler } from "@/components/wallet-conflict-handler"
+import { testDatabaseConnection } from "@/lib/connection-test"
 
 const AUTOSAVE_INTERVAL = 30000 // 30 seconds
 
@@ -50,6 +52,7 @@ function IntakePageContent() {
   const [userId, setUserId] = useState<string | null>(null)
   const [showMidpointModal, setShowMidpointModal] = useState(false)
   const [lastError, setLastError] = useState<string | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<string | null>(null)
 
   // Initialize user and load existing profile data
   useEffect(() => {
@@ -161,6 +164,14 @@ function IntakePageContent() {
         is_complete: isComplete,
       }
 
+      // Add data validation before sending
+      if (currentStage >= 1 && !saveData.first_name?.trim()) {
+        throw new Error("First name is required")
+      }
+      if (currentStage >= 1 && (!saveData.age || saveData.age < 0 || saveData.age > 120)) {
+        throw new Error("Valid age is required")
+      }
+
       console.log("🔄 Complete save data:", saveData)
 
       const result = await saveIntakeModule(saveData)
@@ -183,23 +194,23 @@ function IntakePageContent() {
         const errorMsg = error.message.toLowerCase()
         setLastError(error.message)
 
-        if (errorMsg.includes("not authenticated") || errorMsg.includes("session")) {
+        if (errorMsg.includes("session has expired") || errorMsg.includes("not authenticated")) {
           errorTitle = "Session Expired"
           errorMessage = "Your session has expired. Please log in again."
           router.push("/login")
           return false
-        } else if (errorMsg.includes("validation failed")) {
-          errorTitle = "Validation Error"
-          errorMessage = "Please check your input and try again."
-        } else if (errorMsg.includes("required field")) {
+        } else if (errorMsg.includes("validation failed") || errorMsg.includes("required")) {
           errorTitle = "Missing Information"
           errorMessage = "Please fill in all required fields before continuing."
         } else if (errorMsg.includes("too long")) {
           errorTitle = "Text Too Long"
           errorMessage = "One of your responses is too long. Please shorten it and try again."
-        } else if (errorMsg.includes("network") || errorMsg.includes("connection")) {
+        } else if (errorMsg.includes("connection") || errorMsg.includes("network")) {
           errorTitle = "Connection Error"
           errorMessage = "Please check your internet connection and try again."
+        } else if (errorMsg.includes("database")) {
+          errorTitle = "Database Error"
+          errorMessage = "There was a problem saving your data. Please try again in a moment."
         } else {
           errorMessage = `Save failed: ${error.message}`
         }
@@ -311,9 +322,35 @@ function IntakePageContent() {
     )
   }
 
+  const testConnection = async () => {
+    try {
+      setConnectionStatus("Testing...")
+      const result = await testDatabaseConnection()
+      if (result.success) {
+        setConnectionStatus("✅ Database connection successful!")
+        toast({
+          title: "Connection Test",
+          description: "Database is working properly!",
+        })
+      } else {
+        setConnectionStatus(`❌ Connection failed: ${result.error}`)
+        toast({
+          title: "Connection Error",
+          description: result.error,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      setConnectionStatus(`❌ Test failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted p-4">
       <div className="max-w-2xl mx-auto space-y-6">
+        {/* Add wallet conflict handler */}
+        <WalletConflictHandler />
+
         {/* Header with Navigation */}
         {showNavigation && (
           <div className="flex items-center justify-between">
@@ -336,6 +373,15 @@ function IntakePageContent() {
               )}
             </div>
             <div className="w-16" /> {/* Spacer */}
+          </div>
+        )}
+
+        {showNavigation && (
+          <div className="flex items-center justify-center mb-4">
+            <Button variant="outline" size="sm" onClick={testConnection} disabled={isLoading}>
+              Test Database Connection
+            </Button>
+            {connectionStatus && <p className="ml-3 text-sm text-muted-foreground">{connectionStatus}</p>}
           </div>
         )}
 

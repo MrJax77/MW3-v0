@@ -42,70 +42,63 @@ export async function getProfile() {
 export async function saveIntakeModule(moduleData: any) {
   try {
     logDebug("saveIntakeModule", "Starting save operation")
-    logDebug("saveIntakeModule", { inputData: moduleData })
 
-    // Validate environment first
-    validateServerEnvironment()
+    // Add environment validation
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      throw new Error("Missing Supabase environment variables")
+    }
 
     const cookieStore = cookies()
     const supabaseServer = createServerComponentClient({ cookies: () => cookieStore })
 
-    // Get user with detailed error handling
-    let user
-    try {
-      const { data: userData, error: userError } = await supabaseServer.auth.getUser()
+    // Enhanced user authentication check
+    const { data: userData, error: userError } = await supabaseServer.auth.getUser()
 
-      if (userError) {
-        logError("saveIntakeModule", userError, { step: "auth.getUser" })
-        throw new Error(`Authentication failed: ${userError.message}`)
-      }
-
-      if (!userData?.user) {
-        logError("saveIntakeModule", new Error("No user data returned"))
-        throw new Error("User not authenticated")
-      }
-
-      user = userData.user
-      logDebug("saveIntakeModule", `Authenticated user: ${user.id}`)
-    } catch (authError) {
-      logError("saveIntakeModule", authError, { step: "authentication" })
-      throw new Error("Authentication failed")
+    if (userError) {
+      logError("saveIntakeModule", userError, { step: "auth.getUser" })
+      throw new Error(`Authentication failed: ${userError.message}`)
     }
 
-    // Sanitize and validate data
-    let sanitizedData
-    try {
-      sanitizedData = sanitizeIntakeData(moduleData)
-      logDebug("saveIntakeModule", { sanitizedData })
-
-      const validation = validateIntakeData(sanitizedData, sanitizedData.completed_stages || 0)
-      if (!validation.isValid) {
-        logError("saveIntakeModule", new Error("Validation failed"), { errors: validation.errors })
-        throw new Error(`Validation failed: ${validation.errors.join(", ")}`)
-      }
-    } catch (validationError) {
-      logError("saveIntakeModule", validationError, { step: "validation" })
-      throw validationError
+    if (!userData?.user) {
+      throw new Error("User not authenticated")
     }
 
-    // Prepare database data with explicit type conversion
+    const user = userData.user
+    logDebug("saveIntakeModule", `Processing save for user: ${user.id}`)
+
+    // Add data sanitization with better error handling
+    const sanitizedData = sanitizeIntakeData(moduleData)
+
+    // Enhanced validation
+    const validation = validateIntakeData(sanitizedData, sanitizedData.completed_stages || 0)
+    if (!validation.isValid) {
+      logError("saveIntakeModule", new Error("Validation failed"), {
+        errors: validation.errors,
+        data: sanitizedData,
+      })
+      throw new Error(`Validation failed: ${validation.errors.join(", ")}`)
+    }
+
+    // Test database connection before attempting save
+    const { error: connectionError } = await supabaseServer.from("profiles").select("user_id").limit(1)
+
+    if (connectionError) {
+      logError("saveIntakeModule", connectionError, { step: "connection_test" })
+      throw new Error(`Database connection failed: ${connectionError.message}`)
+    }
+
+    // Prepare data with explicit null handling
     const dbData = {
       user_id: user.id,
-
-      // Stage 0: Consent - ensure boolean
-      consent_agreed: Boolean(sanitizedData.consent_agreed),
-
-      // Stage 1: Basic Info - ensure proper types
-      first_name: sanitizedData.first_name ? String(sanitizedData.first_name).trim().substring(0, 100) : null,
-      age: sanitizedData.age ? Math.max(0, Math.min(120, Number(sanitizedData.age))) : null,
-      role: sanitizedData.role ? String(sanitizedData.role).trim().substring(0, 50) : null,
-      spouse_name: sanitizedData.spouse_name ? String(sanitizedData.spouse_name).trim().substring(0, 100) : null,
-      children_count: sanitizedData.children_count
-        ? Math.max(0, Math.min(20, Number(sanitizedData.children_count)))
-        : 0,
-      children_ages: sanitizedData.children_ages ? String(sanitizedData.children_ages).trim().substring(0, 200) : null,
-
-      // Stage 2: Relationships - ensure number ranges
+      // Ensure all fields have proper defaults
+      consent_agreed: sanitizedData.consent_agreed ?? false,
+      first_name: sanitizedData.first_name?.trim() || null,
+      age: sanitizedData.age ? Number(sanitizedData.age) : null,
+      role: sanitizedData.role?.trim() || null,
+      spouse_name: sanitizedData.spouse_name?.trim() || null,
+      children_count: sanitizedData.children_count ? Number(sanitizedData.children_count) : 0,
+      children_ages: sanitizedData.children_ages?.trim() || null,
+      // Add all other fields with proper null handling...
       spouse_relationship_rating:
         sanitizedData.spouse_relationship_rating !== undefined
           ? Math.max(0, Math.min(10, Number(sanitizedData.spouse_relationship_rating)))
@@ -184,74 +177,91 @@ export async function saveIntakeModule(moduleData: any) {
         : "22:00",
       quiet_hours_end: sanitizedData.quiet_hours_end ? String(sanitizedData.quiet_hours_end).substring(0, 10) : "07:00",
       data_deletion_acknowledged: Boolean(sanitizedData.data_deletion_acknowledged),
-
-      // Meta fields
       completed_stages: sanitizedData.completed_stages ? Number(sanitizedData.completed_stages) : 0,
-      is_complete: Boolean(sanitizedData.is_complete),
+      is_complete: sanitizedData.is_complete ?? false,
       last_saved: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
 
-    logDebug("saveIntakeModule", { preparedDbData: dbData })
-
-    // Remove any undefined values
+    // Remove undefined values
     Object.keys(dbData).forEach((key) => {
       if (dbData[key as keyof typeof dbData] === undefined) {
         delete dbData[key as keyof typeof dbData]
       }
     })
 
-    logDebug("saveIntakeModule", "Attempting database upsert")
+    logDebug("saveIntakeModule", { dbData })
 
-    // Perform database operation with detailed error handling
-    let result
-    try {
-      const { data, error } = await supabaseServer
-        .from("profiles")
-        .upsert(dbData, {
-          onConflict: "user_id",
-        })
-        .select()
-        .single()
+    // Enhanced database operation with retry logic
+    let retryCount = 0
+    const maxRetries = 3
 
-      if (error) {
-        logError("saveIntakeModule", error, {
-          step: "database_upsert",
-          dbData,
-          errorCode: error.code,
-          errorDetails: error.details,
-          errorHint: error.hint,
-        })
+    while (retryCount < maxRetries) {
+      try {
+        const { data, error } = await supabaseServer
+          .from("profiles")
+          .upsert(dbData, { onConflict: "user_id" })
+          .select()
+          .single()
 
-        // Provide specific error messages based on error codes
-        if (error.code === "23505") {
-          throw new Error("Duplicate entry detected")
-        } else if (error.code === "23502") {
-          throw new Error(`Required field missing: ${error.details || "unknown field"}`)
-        } else if (error.code === "22001") {
-          throw new Error("Text field too long")
-        } else if (error.code === "42703") {
-          throw new Error("Database column does not exist")
-        } else {
-          throw new Error(`Database error (${error.code}): ${error.message}`)
+        if (error) {
+          logError("saveIntakeModule", error, {
+            step: "database_upsert",
+            attempt: retryCount + 1,
+            errorCode: error.code,
+            errorDetails: error.details,
+            errorHint: error.hint,
+          })
+
+          // Handle specific error codes
+          if (error.code === "23505") {
+            throw new Error("Duplicate entry detected")
+          } else if (error.code === "23502") {
+            throw new Error(`Required field missing: ${error.details || "unknown field"}`)
+          } else if (error.code === "22001") {
+            throw new Error("Text field too long")
+          } else if (error.code === "42703") {
+            throw new Error("Database column does not exist")
+          } else if (error.code === "08006" || error.code === "08000") {
+            // Connection errors - retry
+            if (retryCount < maxRetries - 1) {
+              retryCount++
+              await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount))
+              continue
+            }
+            throw new Error("Database connection failed after retries")
+          } else {
+            throw new Error(`Database error (${error.code}): ${error.message}`)
+          }
         }
+
+        logDebug("saveIntakeModule", { savedData: data })
+        return data
+      } catch (dbError) {
+        if (retryCount >= maxRetries - 1) {
+          throw dbError
+        }
+        retryCount++
+        await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount))
       }
-
-      result = data
-      logDebug("saveIntakeModule", { savedData: result })
-    } catch (dbError) {
-      logError("saveIntakeModule", dbError, { step: "database_operation" })
-      throw dbError
     }
-
-    logDebug("saveIntakeModule", "Save operation completed successfully")
-    return result
   } catch (error) {
-    logError("saveIntakeModule", error, { step: "overall_operation" })
+    logError("saveIntakeModule", error, {
+      step: "overall_operation",
+      moduleData: JSON.stringify(moduleData, null, 2),
+    })
 
-    // Re-throw with more context for client
+    // Provide specific error messages
     if (error instanceof Error) {
-      throw new Error(`Save failed: ${error.message}`)
+      if (error.message.includes("not authenticated")) {
+        throw new Error("Your session has expired. Please log in again.")
+      } else if (error.message.includes("validation failed")) {
+        throw new Error("Please check your input and try again.")
+      } else if (error.message.includes("connection")) {
+        throw new Error("Database connection failed. Please try again.")
+      } else {
+        throw new Error(`Save failed: ${error.message}`)
+      }
     } else {
       throw new Error("Save failed: Unknown error occurred")
     }
