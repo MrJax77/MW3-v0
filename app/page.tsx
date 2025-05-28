@@ -19,6 +19,7 @@ export default function HomePage() {
         const currentUser = await getUser()
         if (currentUser) {
           // User is logged in, redirect to dashboard
+          console.log("User already logged in, redirecting to dashboard")
           router.push("/dashboard")
           return
         }

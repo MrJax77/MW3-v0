@@ -1,5 +1,4 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
+import { createSupabaseServerClient, getServerUser } from "@/lib/supabase-server"
 import { NextResponse } from "next/server"
 
 export async function GET() {
@@ -26,8 +25,7 @@ export async function GET() {
 
     console.log("✅ Environment variables present")
 
-    const cookieStore = cookies()
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const supabase = createSupabaseServerClient()
 
     // Test basic database connection
     console.log("🔍 Testing database connection...")
@@ -49,20 +47,17 @@ export async function GET() {
 
     console.log("✅ Database connection successful")
 
-    // Test authentication - improved
+    // Test authentication using our improved method
     console.log("🔍 Testing authentication...")
-    const { data: userData, error: authError } = await supabase.auth.getUser()
+    const user = await getServerUser()
 
     let authStatus = "anonymous"
     let userId = null
 
-    if (authError) {
-      console.log("⚠️ Auth error (expected if not logged in):", authError.message)
-      authStatus = "failed"
-    } else if (userData?.user) {
-      console.log("✅ User authenticated:", userData.user.id)
+    if (user) {
+      console.log("✅ User authenticated:", user.id)
       authStatus = "authenticated"
-      userId = userData.user.id
+      userId = user.id
     } else {
       console.log("ℹ️ No user session (anonymous)")
       authStatus = "anonymous"
