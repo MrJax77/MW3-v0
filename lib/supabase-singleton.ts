@@ -1,7 +1,6 @@
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { logDebug } from "./debug-utils"
 
@@ -27,6 +26,9 @@ export function getSupabaseServerClient() {
     throw new Error("getSupabaseServerClient should only be called on the server side")
   }
 
+  // Import cookies dynamically only when this function is called
+  // This prevents the "next/headers" import from affecting client components
+  const { cookies } = require("next/headers")
   const cookieStore = cookies()
   return createServerComponentClient({ cookies: () => cookieStore })
 }
@@ -37,6 +39,8 @@ export function getSupabaseRouteHandlerClient() {
     throw new Error("getSupabaseRouteHandlerClient should only be called on the server side")
   }
 
+  // Import cookies dynamically only when this function is called
+  const { cookies } = require("next/headers")
   const cookieStore = cookies()
   return createRouteHandlerClient({ cookies: () => cookieStore })
 }
