@@ -1,4 +1,4 @@
-import { getSupabaseServerClient } from "./supabase-singleton"
+import { getSupabaseServerClient, getSupabaseRouteHandlerClient } from "./supabase-singleton"
 import { logDebug, logError } from "./debug-utils"
 
 export async function getServerSession() {
@@ -28,4 +28,9 @@ export async function getServerSession() {
 
 export function createSupabaseServerClient() {
   return getSupabaseServerClient()
+}
+
+// Add the missing export
+export function createSupabaseRouteClient() {
+  return getSupabaseRouteHandlerClient()
 }
