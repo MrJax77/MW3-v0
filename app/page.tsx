@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getUser } from "@/lib/supabase"
+import { getSupabaseClient } from "@/lib/supabase-singleton"
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Heart, Target, ArrowRight, Loader2, Lightbulb } from "lucide-react"
@@ -21,8 +22,28 @@ export default function HomePage() {
 
         if (currentUser) {
           console.log("✅ User already logged in:", currentUser.id)
-          console.log("🔄 Redirecting to dashboard...")
-          router.push("/dashboard")
+
+          // Check survey completion status
+          const supabase = getSupabaseClient()
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("is_complete, completed_stages")
+            .eq("user_id", currentUser.id)
+            .single()
+
+          if (profileError && profileError.code !== "PGRST116") {
+            console.warn("⚠️ Could not check profile, defaulting to intake")
+            router.push("/intake")
+            return
+          }
+
+          if (profile?.is_complete) {
+            console.log("🔄 User completed survey, redirecting to dashboard...")
+            router.push("/dashboard")
+          } else {
+            console.log("🔄 User has not completed survey, redirecting to intake...")
+            router.push("/intake")
+          }
           return
         } else {
           console.log("ℹ️ No user session found - showing landing page")

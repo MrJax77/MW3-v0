@@ -304,7 +304,7 @@ export async function getLatestInsight() {
     const supabase = getSupabaseServerClient()
     const { data: insight, error } = await supabase
       .from("insights")
-      .select("*")
+      .select("*, metadata") // Added metadata to the selection
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -424,41 +424,6 @@ export async function getIntakeProgress() {
   } catch (error) {
     logError("getIntakeProgress", error)
     return { completed_stages: 0, is_complete: false, last_saved: null, first_name: null }
-  }
-}
-
-export async function saveDailyLog(logData: any) {
-  try {
-    validateServerEnvironment()
-
-    const user = await getAuthenticatedUser()
-    if (!user) {
-      throw new Error("Please log in to save daily logs")
-    }
-
-    const supabase = getSupabaseServerClient()
-    const today = new Date().toISOString().split("T")[0]
-
-    const { data, error } = await supabase.from("daily_logs").upsert({
-      user_id: user.id,
-      log_date: today,
-      sleep_hours: logData.sleepHours,
-      exercise_minutes: logData.exerciseMinutes,
-      quality_time: logData.qualityTime,
-      mood_rating: logData.mood,
-      notes: logData.notes || null,
-      updated_at: new Date().toISOString(),
-    })
-
-    if (error) {
-      logError("saveDailyLog", error, { logData })
-      throw new Error(`Failed to save daily log: ${error.message}`)
-    }
-
-    return data
-  } catch (error) {
-    logError("saveDailyLog", error)
-    throw error
   }
 }
 

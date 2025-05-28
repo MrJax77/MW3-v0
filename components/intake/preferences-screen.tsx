@@ -31,6 +31,7 @@ export function PreferencesScreen({ defaultValues, onSubmit, profileSummary }: P
     handleSubmit,
     setValue,
     watch,
+    trigger,
     formState: { errors, isValid },
   } = useForm<PreferencesData>({
     resolver: zodResolver(preferencesSchema),
@@ -48,6 +49,18 @@ export function PreferencesScreen({ defaultValues, onSubmit, profileSummary }: P
   const watchedQuietStart = watch("quiet_hours_start")
   const watchedQuietEnd = watch("quiet_hours_end")
   const watchedDataDeletion = watch("data_deletion_acknowledged")
+
+  // Add this after the watch declarations for debugging
+  console.log("Form validation state:", {
+    isValid,
+    errors,
+    values: {
+      notification_channel: watchedNotificationChannel,
+      quiet_hours_start: watchedQuietStart,
+      quiet_hours_end: watchedQuietEnd,
+      data_deletion_acknowledged: watchedDataDeletion,
+    },
+  })
 
   const timeOptions = Array.from({ length: 24 }, (_, i) => {
     const hour = i.toString().padStart(2, "0")
@@ -157,7 +170,10 @@ export function PreferencesScreen({ defaultValues, onSubmit, profileSummary }: P
               <Checkbox
                 id="data-deletion"
                 checked={watchedDataDeletion}
-                onCheckedChange={(checked) => setValue("data_deletion_acknowledged", checked as boolean)}
+                onCheckedChange={async (checked) => {
+                  setValue("data_deletion_acknowledged", checked as boolean)
+                  await trigger("data_deletion_acknowledged")
+                }}
               />
               <div className="space-y-1">
                 <Label htmlFor="data-deletion" className="text-sm font-medium flex items-center gap-2">
@@ -175,8 +191,13 @@ export function PreferencesScreen({ defaultValues, onSubmit, profileSummary }: P
             )}
           </div>
 
-          <Button type="submit" className="w-full" disabled={!isValid}>
-            Complete Setup
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={!isValid}
+            onClick={() => console.log("Button clicked, form valid:", isValid)}
+          >
+            Complete Setup {!isValid && "(Form Invalid)"}
           </Button>
         </form>
       </CardContent>

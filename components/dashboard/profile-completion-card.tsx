@@ -2,9 +2,9 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { User, CheckCircle, Clock, RotateCcw, ArrowRight } from "lucide-react"
+import { User, CheckCircle, Clock, RotateCcw, ArrowRight, Edit } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface ProfileCompletionCardProps {
   completeness: any
@@ -12,19 +12,6 @@ interface ProfileCompletionCardProps {
   onContinueSetup: () => void
   onResetProfile: () => void
 }
-
-const stageNames = [
-  "Welcome & Consent",
-  "Basic Information",
-  "Relationships",
-  "Health & Wellness",
-  "Mindset & Stress",
-  "Daily Routine",
-  "Future Goals",
-  "Family Values",
-  "Technology",
-  "Preferences",
-]
 
 export function ProfileCompletionCard({
   completeness,
@@ -54,7 +41,7 @@ export function ProfileCompletionCard({
   const getNextAction = () => {
     if (percentage === 0) return "Start Profile Setup"
     if (percentage < 100) return "Continue Setup"
-    return "Review Profile"
+    return "Update Profile"
   }
 
   return (
@@ -63,7 +50,7 @@ export function ProfileCompletionCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <User className="h-5 w-5" />
-            <CardTitle>Profile Setup Progress</CardTitle>
+            <CardTitle>Profile Completion</CardTitle>
           </div>
           <Badge className={getStatusColor()}>{getStatusText()}</Badge>
         </div>
@@ -78,20 +65,32 @@ export function ProfileCompletionCard({
             </span>
             <span className="text-lg font-semibold">{percentage}%</span>
           </div>
-          <Progress value={percentage} className="w-full h-3" />
+          <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className={cn(
+                "h-full transition-all duration-300 ease-in-out rounded-full",
+                percentage === 100
+                  ? "bg-gradient-to-r from-green-400 to-emerald-500"
+                  : percentage > 50
+                    ? "bg-gradient-to-r from-yellow-400 to-amber-500"
+                    : "bg-gradient-to-r from-blue-400 to-primary",
+              )}
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
         </div>
 
         {/* Stage Progress Grid */}
         <div className="space-y-3">
           <h4 className="font-semibold text-sm">Setup Stages</h4>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-            {stageNames.map((name, index) => {
+            {Array.from({ length: 10 }).map((_, index) => {
               const isCompleted = completedStages.includes(index)
               const isExpert = index >= 8
 
               return (
                 <div
-                  key={name}
+                  key={index}
                   className={`p-2 rounded text-xs text-center transition-colors ${
                     isCompleted
                       ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200"
@@ -100,9 +99,23 @@ export function ProfileCompletionCard({
                 >
                   <div className="flex items-center justify-center gap-1 mb-1">
                     {isCompleted && <CheckCircle className="h-3 w-3" />}
-                    {isExpert && "⭐"}
                   </div>
-                  <div className="leading-tight">{name}</div>
+                  <div className="leading-tight">
+                    {
+                      [
+                        "Welcome & Consent",
+                        "Basic Information",
+                        "Relationships",
+                        "Health & Wellness",
+                        "Mindset & Stress",
+                        "Daily Routine",
+                        "Future Goals",
+                        "Family Values",
+                        "Technology",
+                        "Preferences",
+                      ][index]
+                    }
+                  </div>
                 </div>
               )
             })}
@@ -130,9 +143,21 @@ export function ProfileCompletionCard({
 
         {/* Action Buttons */}
         <div className="flex gap-3">
-          <Button onClick={onContinueSetup} className="flex-1">
-            <ArrowRight className="mr-2 h-4 w-4" />
-            {getNextAction()}
+          <Button
+            onClick={onContinueSetup}
+            className="flex-1 bg-gradient-to-r from-primary to-primary-foreground/90 hover:from-primary/90 hover:to-primary-foreground/80"
+          >
+            {isComplete ? (
+              <>
+                <Edit className="mr-2 h-4 w-4" />
+                {getNextAction()}
+              </>
+            ) : (
+              <>
+                <ArrowRight className="mr-2 h-4 w-4" />
+                {getNextAction()}
+              </>
+            )}
           </Button>
           {percentage > 0 && (
             <Button variant="outline" onClick={onResetProfile} size="sm">

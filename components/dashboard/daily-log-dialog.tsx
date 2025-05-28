@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Calendar, Star, Loader2 } from "lucide-react"
-import { saveDailyLog } from "@/lib/actions"
+import { saveDailyLogServerAction } from "@/lib/daily-log-actions"
 import { useToast } from "@/hooks/use-toast"
 
 const dailyLogSchema = z.object({
@@ -26,6 +26,7 @@ const dailyLogSchema = z.object({
   exerciseMinutes: z.number().min(0).max(180),
   qualityTime: z.boolean(),
   mood: z.number().min(1).max(5),
+  notes: z.string().optional(),
 })
 
 type DailyLogData = z.infer<typeof dailyLogSchema>
@@ -48,6 +49,7 @@ export function DailyLogDialog() {
       exerciseMinutes: 30,
       qualityTime: false,
       mood: 3,
+      notes: "",
     },
     mode: "onChange",
   })
@@ -60,7 +62,7 @@ export function DailyLogDialog() {
   const onSubmit = async (data: DailyLogData) => {
     setIsLoading(true)
     try {
-      await saveDailyLog(data)
+      await saveDailyLogServerAction(data)
       toast({
         title: "Daily log saved!",
         description: "Your progress has been recorded.",

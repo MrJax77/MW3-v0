@@ -112,3 +112,33 @@ export async function verifySession() {
     return null
   }
 }
+
+// Server-side authentication function
+export async function getAuthenticatedUser() {
+  try {
+    if (typeof window !== "undefined") {
+      throw new Error("getAuthenticatedUser should only be called on the server side")
+    }
+
+    const supabase = getSupabaseServerClient()
+
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
+
+    if (error) {
+      if (!error.message.includes("Auth session missing")) {
+        logError("getAuthenticatedUser", error)
+      } else {
+        logDebug("getAuthenticatedUser", "No auth session found")
+      }
+      return null
+    }
+
+    return user
+  } catch (error) {
+    logError("getAuthenticatedUser", error)
+    throw error
+  }
+}

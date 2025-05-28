@@ -23,6 +23,7 @@ export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const [cooldownSeconds, setCooldownSeconds] = useState(0)
 
   const error = searchParams.get("error")
 
@@ -31,16 +32,37 @@ export default function LoginPage() {
     // Initialize the session manager for token refresh
     const sessionCleanup = startSessionManager()
 
-    // Check for existing auth
+    // Check for existing auth and survey completion
     const checkExistingAuth = async () => {
       try {
         console.log("🔍 Checking existing authentication...")
         const user = await getUser()
         if (user) {
           console.log("✅ User already authenticated:", user.id)
-          console.log("🔄 Redirecting to dashboard...")
+
+          // Check survey completion status
+          const supabase = getSupabaseClient()
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("is_complete, completed_stages")
+            .eq("user_id", user.id)
+            .single()
+
+          if (profileError && profileError.code !== "PGRST116") {
+            console.warn("⚠️ Could not check profile, defaulting to intake")
+            setIsRedirecting(true)
+            router.replace("/intake")
+            return
+          }
+
           setIsRedirecting(true)
-          router.replace("/dashboard")
+          if (profile?.is_complete) {
+            console.log("🔄 User completed survey, redirecting to dashboard...")
+            router.replace("/dashboard")
+          } else {
+            console.log("🔄 User has not completed survey, redirecting to intake...")
+            router.replace("/intake")
+          }
         } else {
           console.log("ℹ️ No existing auth session - showing login form")
         }
@@ -55,6 +77,18 @@ export default function LoginPage() {
       sessionCleanup()
     }
   }, [router])
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (cooldownSeconds > 0) {
+      interval = setInterval(() => {
+        setCooldownSeconds((prev) => prev - 1)
+      }, 1000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [cooldownSeconds])
 
   useEffect(() => {
     if (error) {
@@ -88,7 +122,7 @@ export default function LoginPage() {
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email) return
+    if (!email || cooldownSeconds > 0) return
 
     setIsLoading(true)
     try {
@@ -108,23 +142,36 @@ export default function LoginPage() {
       }
 
       setIsOtpSent(true)
+      setCooldownSeconds(60) // Set 60 second cooldown
       toast({
         title: "Code sent!",
         description: "Check your email for a 6-digit verification code.",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ OTP send error:", error)
-      toast({
-        title: "Error",
-        description: "Failed to send verification code. Please try again.",
-        variant: "destructive",
-      })
+
+      // Handle rate limiting specifically
+      if (error.message?.includes("you can only request this after")) {
+        const match = error.message.match(/after (\d+) seconds/)
+        const seconds = match ? Number.parseInt(match[1]) : 60
+        setCooldownSeconds(seconds)
+        toast({
+          title: "Please wait",
+          description: `You can request a new code in ${seconds} seconds.`,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to send verification code. Please try again.",
+          variant: "destructive",
+        })
+      }
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Update the handleVerifyOTP function to ensure proper session establishment
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!otp || otp.length !== 6) return
@@ -174,6 +221,13 @@ export default function LoginPage() {
         hasRefreshToken: !!session.refresh_token,
       })
 
+      // Check survey completion status before redirecting
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("is_complete, completed_stages")
+        .eq("user_id", session.user.id)
+        .single()
+
       toast({
         title: "Success!",
         description: "You've been logged in successfully.",
@@ -184,9 +238,17 @@ export default function LoginPage() {
       // Add a small delay to ensure cookies are properly set
       await new Promise((resolve) => setTimeout(resolve, 500))
 
-      // Use replace instead of push to prevent back navigation issues
-      console.log("🔄 Redirecting to intake...")
-      router.replace("/intake")
+      // Route based on survey completion
+      if (profileError && profileError.code !== "PGRST116") {
+        console.warn("⚠️ Could not check profile, defaulting to intake")
+        router.replace("/intake")
+      } else if (profile?.is_complete) {
+        console.log("🔄 User completed survey, redirecting to dashboard...")
+        router.replace("/dashboard")
+      } else {
+        console.log("🔄 User has not completed survey, redirecting to intake...")
+        router.replace("/intake")
+      }
     } catch (error) {
       console.error("❌ OTP verify error:", error)
 
@@ -205,6 +267,7 @@ export default function LoginPage() {
   }
 
   const handleResendOTP = () => {
+    if (cooldownSeconds > 0) return
     setIsOtpSent(false)
     setOtp("")
   }
@@ -216,7 +279,7 @@ export default function LoginPage() {
         <Card className="w-full max-w-md">
           <CardContent className="flex flex-col items-center justify-center p-8">
             <Loader2 className="h-8 w-8 animate-spin mb-4 text-primary" />
-            <p className="text-center text-muted-foreground">Redirecting to your dashboard...</p>
+            <p className="text-center text-muted-foreground">Checking your profile...</p>
           </CardContent>
         </Card>
       </div>
@@ -259,12 +322,14 @@ export default function LoginPage() {
                   disabled={isLoading}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading || !email}>
+              <Button type="submit" className="w-full" disabled={isLoading || !email || cooldownSeconds > 0}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Sending...
                   </>
+                ) : cooldownSeconds > 0 ? (
+                  `Wait ${cooldownSeconds}s`
                 ) : (
                   <>
                     <Mail className="mr-2 h-4 w-4" />
@@ -310,9 +375,14 @@ export default function LoginPage() {
               </form>
 
               <div className="text-center space-y-2">
-                <Button variant="outline" onClick={handleResendOTP} className="w-full" disabled={isLoading}>
+                <Button
+                  variant="outline"
+                  onClick={handleResendOTP}
+                  className="w-full"
+                  disabled={isLoading || cooldownSeconds > 0}
+                >
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Send new code
+                  {cooldownSeconds > 0 ? `Wait ${cooldownSeconds}s` : "Send new code"}
                 </Button>
                 <p className="text-xs text-muted-foreground">Didn't receive the code? Check your spam folder.</p>
               </div>

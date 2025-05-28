@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getUser, signOut } from "@/lib/supabase"
-import { getProfile, getLatestInsight, calculateProfileCompleteness, getIntakeProgress } from "@/lib/actions"
+import { getClientProfile, getClientIntakeProgress } from "@/lib/client-actions"
 import { Button } from "@/components/ui/button"
 import { ProgressCard } from "@/components/dashboard/progress-card"
 import { InsightsCard } from "@/components/dashboard/insights-card"
@@ -14,6 +14,100 @@ import { LogOut, Target, Lightbulb, Clock, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
 import { startSessionManager } from "@/lib/session-manager"
+import { getSupabaseClient } from "@/lib/supabase-singleton"
+
+// Client-side function to get latest insight
+async function getClientLatestInsight() {
+  try {
+    const supabase = getSupabaseClient()
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+    if (userError || !user) return null
+
+    const { data: insight, error } = await supabase
+      .from("insights")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (error && error.code !== "PGRST116") return null
+    return insight
+  } catch (error) {
+    console.error("Error fetching latest insight:", error)
+    return null
+  }
+}
+
+// Client-side function to calculate profile completeness
+async function calculateClientProfileCompleteness() {
+  try {
+    const profile = await getClientProfile()
+    if (!profile) return { percentage: 0, completedStages: [], missingStages: [], totalStages: 10, isComplete: false }
+
+    const stageChecks = [
+      { stage: 0, name: "Consent", check: () => profile.consent_agreed === true },
+      { stage: 1, name: "Basic Info", check: () => profile.first_name && profile.age && profile.role },
+      {
+        stage: 2,
+        name: "Relationships",
+        check: () => profile.spouse_relationship_rating !== null || profile.children_relationship_rating !== null,
+      },
+      {
+        stage: 3,
+        name: "Health & Wellness",
+        check: () => profile.current_health_rating !== null && profile.health_goal,
+      },
+      {
+        stage: 4,
+        name: "Mindset & Stress",
+        check: () => profile.current_stress_level !== null && profile.personal_goal,
+      },
+      {
+        stage: 5,
+        name: "Daily Routine",
+        check: () => profile.routine_description && profile.routine_description.length > 10,
+      },
+      {
+        stage: 6,
+        name: "Future Goals",
+        check: () => profile.family_future_goal && profile.family_future_goal.length > 10,
+      },
+      { stage: 7, name: "Family Values", check: () => profile.family_value && profile.family_value.length > 10 },
+      {
+        stage: 8,
+        name: "Technology",
+        check: () => profile.wearable_usage !== null && Array.isArray(profile.wearable_usage),
+      },
+      {
+        stage: 9,
+        name: "Preferences",
+        check: () => profile.notification_channel && profile.data_deletion_acknowledged === true,
+      },
+    ]
+
+    const completedStages = stageChecks.filter((stage) => stage.check()).map((stage) => stage.stage)
+    const missingStages = stageChecks
+      .filter((stage) => !stage.check())
+      .map((stage) => ({ stage: stage.stage, name: stage.name }))
+    const percentage = Math.round((completedStages.length / stageChecks.length) * 100)
+
+    return {
+      percentage,
+      completedStages,
+      missingStages,
+      totalStages: stageChecks.length,
+      isComplete: profile.is_complete || percentage === 100,
+    }
+  } catch (error) {
+    console.error("Error calculating profile completeness:", error)
+    return { percentage: 0, completedStages: [], missingStages: [], totalStages: 10, isComplete: false }
+  }
+}
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -55,10 +149,10 @@ export default function DashboardPage() {
         console.log("🔄 Fetching dashboard data...")
 
         const [profileData, insightData, completenessData, progressData] = await Promise.allSettled([
-          getProfile(),
-          getLatestInsight(),
-          calculateProfileCompleteness(),
-          getIntakeProgress(),
+          getClientProfile(),
+          getClientLatestInsight(),
+          calculateClientProfileCompleteness(),
+          getClientIntakeProgress(),
         ])
 
         // Handle profile data
@@ -209,6 +303,9 @@ export default function DashboardPage() {
     )
   }
 
+  // Get user's first name for the chat
+  const userName = profile?.first_name || intakeProgress?.first_name || "User"
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted p-4">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -246,7 +343,14 @@ export default function DashboardPage() {
         <ProfileCompletionCard
           completeness={profileCompleteness}
           intakeProgress={intakeProgress}
-          onContinueSetup={() => router.push("/intake")}
+          onContinueSetup={() => {
+            // Route based on profile completion status
+            if (profileCompleteness?.isComplete) {
+              router.push("/profile/edit")
+            } else {
+              router.push("/intake")
+            }
+          }}
           onResetProfile={() => {
             // TODO: Implement reset functionality
             toast({
@@ -294,6 +398,7 @@ export default function DashboardPage() {
           initialInsight={insight}
           canGenerateInsights={profileCompleteness?.percentage >= 50}
           profileCompleteness={profileCompleteness?.percentage || 0}
+          userName={userName}
         />
 
         {/* Quick Actions */}
@@ -301,11 +406,13 @@ export default function DashboardPage() {
           profile={profile}
           profileCompleteness={profileCompleteness}
           onNavigateToIntake={() => router.push("/intake")}
+          onNavigateToProfileEditor={() => router.push("/profile/edit")}
           onViewInsights={() => {
             document.querySelector("[data-insights-card]")?.scrollIntoView({
               behavior: "smooth",
             })
           }}
+          onViewChatHistory={() => router.push("/chat-history")} // Added new prop
         />
       </div>
     </div>

@@ -1,5 +1,3 @@
-// Enhance the auth callback with better error handling and logging
-
 import { getSupabaseRouteHandlerClient } from "@/lib/supabase-singleton"
 import { type NextRequest, NextResponse } from "next/server"
 import { logDebug, logError } from "@/lib/debug-utils"
@@ -61,7 +59,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/login?error=session_verification_failed", request.url))
     }
 
-    return NextResponse.redirect(new URL("/intake", request.url))
+    // Check user's survey completion status
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("is_complete, completed_stages")
+      .eq("user_id", data.user.id)
+      .single()
+
+    if (profileError && profileError.code !== "PGRST116") {
+      logError("auth-callback", profileError, { step: "profile_check" })
+      // If we can't check profile, default to intake
+      return NextResponse.redirect(new URL("/intake", request.url))
+    }
+
+    // Determine where to redirect based on survey completion
+    if (profile?.is_complete) {
+      logDebug("auth-callback", "User has completed survey, redirecting to dashboard")
+      return NextResponse.redirect(new URL("/dashboard", request.url))
+    } else {
+      logDebug("auth-callback", "User has not completed survey, redirecting to intake", {
+        completedStages: profile?.completed_stages || 0,
+      })
+      return NextResponse.redirect(new URL("/intake", request.url))
+    }
   } catch (error) {
     logError("auth-callback", error instanceof Error ? error : new Error(String(error)), { step: "overall_process" })
     return NextResponse.redirect(new URL("/login?error=unexpected", request.url))

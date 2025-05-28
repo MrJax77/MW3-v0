@@ -72,10 +72,10 @@ export function WalletConflictHandler() {
       <AlertTitle className="text-yellow-800 dark:text-yellow-200">Wallet Extension Conflict Detected</AlertTitle>
       <AlertDescription className="text-yellow-700 dark:text-yellow-300">
         <div className="space-y-2">
-          <p>Multiple wallet extensions are conflicting: {conflictingWallets.join(", ")}</p>
-          <p className="text-sm">
+          <div>Multiple wallet extensions are conflicting: {conflictingWallets.join(", ")}</div>
+          <div className="text-sm">
             This may cause JavaScript errors in the console but won't affect your data saving or the app functionality.
-          </p>
+          </div>
           <div className="flex gap-2 mt-3">
             <Button
               variant="outline"

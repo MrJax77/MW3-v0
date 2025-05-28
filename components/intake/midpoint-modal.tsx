@@ -27,10 +27,10 @@ export function MidpointModal({ isOpen, onKeepGoing, onFinishLater }: MidpointMo
           </div>
           <DialogTitle className="text-xl">You're halfway there!</DialogTitle>
           <DialogDescription className="text-base space-y-2">
-            <p>Great progress! You've completed the core setup.</p>
-            <p className="text-sm text-muted-foreground">
+            <div>Great progress! You've completed the core setup.</div>
+            <div className="text-sm text-muted-foreground">
               Add a few extra details for smarter coaching, or finish later and start using MW3-GPT now.
-            </p>
+            </div>
           </DialogDescription>
         </DialogHeader>
 
